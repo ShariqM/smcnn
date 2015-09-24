@@ -1,0 +1,8 @@
+net = nn.Sequential()
+net:add(nn.Linear(175, 120))
+net:add(nn.ReLU())
+net:add(nn.Linear(120, 84))
+net:add(nn.ReLU())
+net:add(nn.Linear(84, 10))
+-- net:add(nn.LogSoftMax())
+net:add(nn.SoftMax())
