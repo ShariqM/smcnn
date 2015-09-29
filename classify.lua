@@ -11,7 +11,7 @@ cmd:option('-net', 'dnn', 'type: dnn | cnn | lstm')
 opt = cmd:parse(arg or {})
 
 -- Load the Training and Test Set
-dofile('build_data.lua')
+dofile('build_cdata.lua')
 
 if opt.type == 'cuda' then
    print('==> switching to CUDA')
