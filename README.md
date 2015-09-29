@@ -4,11 +4,13 @@ by
 Shariq Mobin & Joan Bruna
 
 # Files
-  - run.lua - Prep the data and train a specified model (see models)
+  - classify.lua - Train a network on classification
 
-  # Models
-  - dnn.lua - 3 layer network
-  - cnn.lua - TODO
-  - lstm.lua - TODO
+      # Models
+      - dnn.lua - 3 layer network
+      - cnn.lua - TODO
 
+  - predict.lua - Train a network on prediction
 
+      # Models
+      - lstm.lua - TODO
