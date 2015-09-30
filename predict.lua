@@ -11,12 +11,13 @@ local model_utils=require 'model_utils'
 local cmd = torch.CmdLine()
 cmd:option('-type',       'double', 'type: double | float | cuda')
 cmd:option('-load',       'false',  'load pre-trained neural network')
+cmd:option('-savefile','model_autosave','filename to autosave the model (protos) to, appended with the,param,string.t7')
     -- RNN Specific
-cmd:option('-rnn_size',    256,     'size of LSTM internal state')
+cmd:option('-rnn_size',    175,     'size of LSTM internal state')
 cmd:option('-seq_length',  16,      'number of timesteps to unroll to')
     -- General
-cmd:option('-max_epochs',1,'number of full passes through the training data')
-cmd:option('-batch_size',16,'number of sequences to train on in parallel')
+cmd:option('-max_epochs',20000, 'number of full passes through the training data')
+cmd:option('-batch_size',1, 'number of sequences to train on in parallel')
 cmd:option('-save_every',100,'save every 100 steps, overwriting the existing file')
 cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
 cmd:option('-seed',123,'torch manual random number generator seed')
@@ -25,6 +26,7 @@ local opt = cmd:parse(arg or {})
 
 -- Load the Training and Test Set
 dofile('build_pdata.lua')
+cqt_features = 175
 
 -- CUDA
 if opt.type == 'cuda' then
@@ -39,13 +41,17 @@ end
 
 -- Network
 local protos = {}
+-- protos.embed = nn.Sequential():add(nn.Linear(cqt_features, opt.rnn_size)) -- Maybe?
 protos.lstm = LSTM.lstm(opt.rnn_size)
+protos.output = nn.Sequential():add(nn.Linear(opt.rnn_size, cqt_features)):add(nn.LogSoftMax())
 protos.criterion =  nn.MSECriterion()
 local params, grad_params = model_utils.combine_all_parameters(protos.lstm) -- Not sure what this does...
 params.uniform(-0.08, 0.08) -- Hmmm...
 
-local clones = {}
-clones['lstm'] = model_utils.clone_T_times(protos.lstm, opt.seq_length) -- had one extra in example...
+clones = {}
+    -- clones[name] = model_utils.clone_many_times(proto, opt.seq_length, not proto.parameters)
+clones['output'] = model_utils.clone_T_times(protos.output, opt.seq_length)
+clones['lstm'] = model_utils.clone_T_times(protos.lstm, opt.seq_length)
 clones['criterion'] = model_utils.clone_T_times(protos.criterion, opt.seq_length)
 
 -- LSTM initial state (zero initially, but final state gets sent to initial state when we do BPTT)
@@ -56,7 +62,6 @@ local initstate_h = initstate_c:clone()
 local dfinalstate_c = initstate_c:clone()
 local dfinalstate_h = initstate_c:clone()
 
-debug.debug()
 -- do fwd/bwd and return loss, grad_params
 function feval(params_)
     if params_ ~= params then
@@ -64,53 +69,45 @@ function feval(params_)
     end
     grad_params:zero()
 
-    ------------------ get minibatch -------------------
-    local x, y = loader:next_batch()
-
+    -- TODO BATCHES
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
-    local lstm_h = {[0]=initstate_h} -- output values of LSTM (prediction)
+    local lstm_h = {[0]=initstate_h} -- output values of LSTM
+    local predictions = {}           -- output prediction
     local loss = 0
 
     for t=1,opt.seq_length do
-
-
         -- we're feeding the *correct* things in here, alternatively
         -- we could sample from the previous timestep and embed that, but that's
         -- more commonly done for LSTM encoder-decoder models
-        lstm_c[t], lstm_h[t] = unpack(clones.lstm[t]:forward{trainset[t], lstm_c[t-1], lstm_h[t-1]})
-
-        predictions[t] = clones.softmax[t]:forward(lstm_h[t])
-        loss = loss + clones.criterion[t]:forward(lstm_h[t], trainset[t+1]) -- Correct?
+        lstm_c[t], lstm_h[t] = unpack(clones.lstm[t]:forward{trainset[{t,{}}], lstm_c[t-1], lstm_h[t-1]})
+        predictions[t] = clones.output[t]:forward(lstm_h[t])
+        loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t+1,{}}])
     end
 
     ------------------ backward pass -------------------
     -- complete reverse order of the above
-    local dembeddings = {}                              -- d loss / d input embeddings
     local dlstm_c = {[opt.seq_length]=dfinalstate_c}    -- internal cell states of LSTM
     local dlstm_h = {}                                  -- output values of LSTM
     for t=opt.seq_length,1,-1 do
-        -- backprop through loss, and softmax/linear
-        local doutput_t = clones.criterion[t]:backward(predictions[t], y[{{}, t}])
+        -- backprop through loss
+        doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{t+1,{}}])
         -- Two cases for dloss/dh_t:
-        --   1. h_T is only used once, sent to the softmax (but not to the next LSTM timestep).
-        --   2. h_t is used twice, for the softmax and for the next step. To obey the
+        --   1. h_T is only used once, (not to the next LSTM timestep).
+        --   2. h_t is used twice, for the prediction and for the next step. To obey the
         --      multivariate chain rule, we add them.
         if t == opt.seq_length then
             assert(dlstm_h[t] == nil)
-            dlstm_h[t] = clones.softmax[t]:backward(lstm_h[t], doutput_t)
+            dlstm_h[t] = clones.output[t]:backward(lstm_h[t], doutput_t)
         else
-            dlstm_h[t]:add(clones.softmax[t]:backward(lstm_h[t], doutput_t))
+            dlstm_h[t]:add(clones.output[t]:backward(lstm_h[t], doutput_t))
         end
 
         -- backprop through LSTM timestep
-        dembeddings[t], dlstm_c[t-1], dlstm_h[t-1] = unpack(clones.lstm[t]:backward(
-            {embeddings[t], lstm_c[t-1], lstm_h[t-1]},
+        dlstm_c[t-1], dlstm_h[t-1] = unpack(clones.lstm[t]:backward(
+            {trainset[{t,{}}], lstm_c[t-1], lstm_h[t-1]},
             {dlstm_c[t], dlstm_h[t]}
         ))
-
-        -- backprop through embeddings
-        clones.embed[t]:backward(x[{{}, t}], dembeddings[t])
     end
 
     ------------------------ misc ----------------------
