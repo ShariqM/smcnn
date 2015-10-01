@@ -86,7 +86,7 @@ function feval(params_)
     grad_params:zero()
 
     -- TODO BATCHES
-    local start = torch.random(trainset:size()[1] - opt.seq_length)
+    local start = torch.random(trainset:size()[1] - opt.seq_length - 1) -- Extra 1 for prediction
 
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
