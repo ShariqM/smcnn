@@ -86,15 +86,17 @@ function feval(params_)
     grad_params:zero()
 
     -- TODO BATCHES
+    local start = torch.random(trainset:size()[1] - opt.seq_length)
+
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
     local lstm_h = {[0]=initstate_h} -- output values of LSTM
     local predictions = {}           -- output prediction
     local loss = 0
 
-    fset = torch.add(trainset, 1)
+    -- fset = torch.add(trainset, 1)
 
-    for t=1,opt.seq_length do
+    for t=start+1, start+opt.seq_length do
         -- we're feeding the *correct* things in here, alternatively
         -- we could sample from the previous timestep and embed that, but that's
         -- more commonly done for LSTM encoder-decoder models
@@ -109,7 +111,7 @@ function feval(params_)
     -- complete reverse order of the above
     local dlstm_c = {[opt.seq_length]=dfinalstate_c}    -- internal cell states of LSTM
     local dlstm_h = {}                                  -- output values of LSTM
-    for t=opt.seq_length,1,-1 do
+    for t=start+opt.seq_length, start+1, -1 do
         -- backprop through loss
         -- local doutput_t = clones.criterion[t]:backward(predictions[t], fset[{t,{}}]) -- Test
         -- local doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{t,{}}]) -- Test
@@ -147,7 +149,7 @@ end
 local losses = {}
 local optim_state = {learningRate = 1e-5}
 local iterations = opt.max_epochs
-start = os.time()
+local start = os.time()
 for i = 1, iterations do
     local _, loss = optim.adagrad(feval, params, optim_state)
     losses[#losses + 1] = loss[1]

@@ -9,6 +9,7 @@ def get_data(name):
 
 name = 'DR1_FCJF0'
 data = get_data(name)
+print data.shape
 
 name = 'DR1_FDAW0'
 data2 = get_data(name)
