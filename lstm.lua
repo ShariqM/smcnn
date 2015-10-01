@@ -27,7 +27,9 @@ function LSTM.lstm(rnn_size)
     })
     local next_h           = nn.CMulTable()({out_gate, nn.Tanh()(next_c)})
 
-    return nn.gModule({x, prev_c, prev_h}, {next_c, next_h})
+    tmp = nn.gModule({x, prev_c, prev_h}, {next_c, next_h})
+    -- graph.dot(tmp.fg, 'LSTM', 'lstm.png') -- Really complicated...
+    return tmp
 end
 
 return LSTM
