@@ -96,26 +96,26 @@ function feval(params_)
 
     -- fset = torch.add(trainset, 1)
 
-    for t=start+1, start+opt.seq_length do
+    for t=1,opt.seq_length do
         -- we're feeding the *correct* things in here, alternatively
         -- we could sample from the previous timestep and embed that, but that's
         -- more commonly done for LSTM encoder-decoder models
-        lstm_c[t], lstm_h[t] = unpack(clones.lstm[t]:forward{trainset[{t,{}}], lstm_c[t-1], lstm_h[t-1]})
+        lstm_c[t], lstm_h[t] = unpack(clones.lstm[t]:forward{trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1]})
         predictions[t] = clones.output[t]:forward(lstm_h[t])
         -- loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t,{}}]) -- Test
         -- loss = loss + clones.criterion[t]:forward(predictions[t], fset[{t,{}}]) -- Test
-        loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t+1,{}}])
+        loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{start+t+1,{}}])
     end
 
     ------------------ backward pass -------------------
     -- complete reverse order of the above
     local dlstm_c = {[opt.seq_length]=dfinalstate_c}    -- internal cell states of LSTM
     local dlstm_h = {}                                  -- output values of LSTM
-    for t=start+opt.seq_length, start+1, -1 do
+    for t=opt.seq_length,1,-1 do
         -- backprop through loss
         -- local doutput_t = clones.criterion[t]:backward(predictions[t], fset[{t,{}}]) -- Test
         -- local doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{t,{}}]) -- Test
-        local doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{t+1,{}}])
+        local doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{start+t+1,{}}])
         -- Two cases for dloss/dh_t:
         --   1. h_T is only used once, (not to the next LSTM timestep).
         --   2. h_t is used twice, for the prediction and for the next step. To obey the
@@ -129,7 +129,7 @@ function feval(params_)
 
         -- backprop through LSTM timestep
         dlstm_c[t-1], dlstm_h[t-1] = unpack(clones.lstm[t]:backward(
-            {trainset[{t,{}}], lstm_c[t-1], lstm_h[t-1]},
+            {trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1]},
             {dlstm_c[t], dlstm_h[t]}
         ))
     end
