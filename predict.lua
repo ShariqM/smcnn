@@ -75,9 +75,6 @@ local initstate_h = initstate_c:clone()
 local dfinalstate_c = initstate_c:clone()
 local dfinalstate_h = initstate_c:clone()
 
-
-
-
 -- do fwd/bwd and return loss, grad_params
 function feval(params_)
     if params_ ~= params then
@@ -91,7 +88,8 @@ function feval(params_)
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
     local lstm_h = {[0]=initstate_h} -- output values of LSTM
-    local predictions = {}           -- output prediction
+    -- local predictions = {}           -- output prediction
+    local predictions = torch.Tensor(opt.seq_length, 175)
     local loss = 0
 
     -- fset = torch.add(trainset, 1)
@@ -106,6 +104,8 @@ function feval(params_)
         -- loss = loss + clones.criterion[t]:forward(predictions[t], fset[{t,{}}]) -- Test
         loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{start+t+1,{}}])
     end
+
+    matio.save('predictions/test.mat', predictions)
 
     ------------------ backward pass -------------------
     -- complete reverse order of the above
