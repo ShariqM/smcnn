@@ -11,19 +11,19 @@ local model_utils=require 'model_utils'
 -- SETUP
 local cmd = torch.CmdLine()
 cmd:option('-type',       'double', 'type: double | float | cuda')
-cmd:option('-load',       'false',  'load pre-trained neural network')
-cmd:option('-savefile','model_autosave','filename to autosave the model (protos) to, appended with the,param,string.t7')
+cmd:option('-load_net', false,  'load pre-trained neural network')
 
     -- RNN Specific
 cmd:option('-rnn_size',    175,     'size of LSTM internal state')
-cmd:option('-seq_length',  64,      'number of timesteps to unroll to')
+cmd:option('-seq_length',  32,      'number of timesteps to unroll to')
 
     -- General
-cmd:option('-max_epochs',20000, 'number of full passes through the training data')
+cmd:option('-max_epochs',1000, 'number of full passes through the training data')
 cmd:option('-batch_size',1, 'number of sequences to train on in parallel')
 cmd:option('-save_every',100,'save every 100 steps, overwriting the existing file')
 cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
 cmd:option('-seed',123,'torch manual random number generator seed')
+cmd:option('-notrain', false,'Don\'t train network')
 
 local opt = cmd:parse(arg or {})
 
@@ -41,19 +41,23 @@ end
 dofile('build_pdata.lua')
 cqt_features = 175
 
--- TODO Load nn
-
 -- Network
 local protos = {}
--- protos.embed = nn.Sequential():add(nn.Linear(cqt_features, opt.rnn_size)) -- Maybe?
-protos.lstm = LSTM.lstm(opt.rnn_size)
-protos.output = nn.Sequential():add(nn.Linear(opt.rnn_size, cqt_features))
-protos.criterion = nn.MSECriterion()
-local params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
-params.uniform(-0.08, 0.08) -- Hmmm...
+local params, grad_params
+if opt.load_net then
+    protos = torch.load('nets/lstm.bin')
+    params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
+else
+    protos = {}
+    -- protos.embed = nn.Sequential():add(nn.Linear(cqt_features, opt.rnn_size)) -- Maybe?
+    protos.lstm = LSTM.lstm(opt.rnn_size)
+    protos.output = nn.Sequential():add(nn.Linear(opt.rnn_size, cqt_features))
+    protos.criterion = nn.MSECriterion()
+    params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
+    params.uniform(-0.08, 0.08) -- Hmmm...
+end
 
 local clones = {}
-    -- clones[name] = model_utils.clone_many_times(proto, opt.seq_length, not proto.parameters)
 for name,proto in pairs(protos) do
     print('cloning '..name)
     clones[name] = model_utils.clone_T_times(proto, opt.seq_length)
@@ -61,6 +65,8 @@ end
 
 -- LSTM initial state (zero initially, but final state gets sent to initial state when we do BPTT)
 local initstate_c = torch.zeros(opt.batch_size, opt.rnn_size)
+local initstate_h = initstate_c:clone()
+
 -- Put everything on the GPU
 if opt.type == 'cuda' then
     for name,proto in pairs(protos) do
@@ -68,8 +74,6 @@ if opt.type == 'cuda' then
         proto:cuda()
     end
 end
-local initstate_h = initstate_c:clone()
-
 
 -- LSTM final state's backward message (dloss/dfinalstate) is 0, since it doesn't influence predictions
 local dfinalstate_c = initstate_c:clone()
@@ -84,6 +88,7 @@ function feval(params_)
 
     -- TODO BATCHES
     local start = torch.random(trainset:size()[1] - opt.seq_length - 1) -- Extra 1 for prediction
+    start = 0
 
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
@@ -148,17 +153,62 @@ end
 -- optimization stuff
 local losses = {}
 local optim_state = {learningRate = 1e-5}
-local iterations = opt.max_epochs
+local iterations =  opt.max_epochs
 local start = os.time()
 for i = 1, iterations do
+    if opt.notrain then -- Messy
+        break
+    end
+
     local _, loss = optim.adagrad(feval, params, optim_state)
     losses[#losses + 1] = loss[1]
 
     if i % opt.save_every == 0 then
-        torch.save(opt.savefile, protos)
+        torch.save('nets/lstm.bin', protos)
     end
+
     if i % opt.print_every == 0 then
         print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f, gradnorm = %6.4e, elapsed=%d",
                 i, loss[1], loss[1] / opt.seq_length, grad_params:norm(), os.difftime(os.time(), start)))
     end
 end
+
+-- Reset
+-- local gc = torch.zeros(opt.batch_size, opt.rnn_size)
+-- local gh = initstate_c:clone()
+
+-- Test
+print("*** --- ***           *** --- ***")
+print("*** --- *** Test Time *** --- ***")
+print("*** --- ***           *** --- ***")
+function test(params_)
+    if params_ ~= params then
+        params:copy(params_)
+    end
+    grad_params:zero()
+
+
+    local loss = 0
+    -- local lstm_c = initstate_c
+    -- local lstm_h = initstate_h
+    -- local lstm_c = {[0]=gc} -- internal cell states of LSTM
+    -- local lstm_h = {[0]=gh} -- output values of LSTM
+    local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
+    local lstm_h = {[0]=initstate_h} -- output values of LSTM
+    print (initstate_c)
+
+
+    for t=1, opt.seq_length do
+        x = t
+        -- lstm_c, lstm_h = unpack(clones.lstm[x]:forward{trainset[{t,{}}], lstm_c, lstm_h}) -- 1 ok?
+        lstm_c[t], lstm_h[t] = unpack(clones.lstm[x]:forward{trainset[{t,{}}], lstm_c[t-1], lstm_h[t-1]})
+        local prediction = clones.output[x]:forward(lstm_h[t])
+        -- local prediction = clones.output[x]:forward(lstm_h)
+        local loss_t = loss + clones.criterion[x]:forward(prediction, trainset[{t+1,{}}])
+        loss = loss + loss_t
+        print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f", t, loss_t, loss / t))
+    end
+end
+
+
+test(params)
