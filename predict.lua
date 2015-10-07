@@ -44,8 +44,10 @@ cqt_features = 175
 -- Network
 local protos = {}
 local params, grad_params
+local clones = {}
 if opt.load_net then
     protos = torch.load('nets/lstm.bin')
+    clones = torch.load('nets/lstm_clones.bin')
     params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
 else
     protos = {}
@@ -55,13 +57,13 @@ else
     protos.criterion = nn.MSECriterion()
     params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
     params.uniform(-0.08, 0.08) -- Hmmm...
+
+    for name,proto in pairs(protos) do
+        print('cloning '..name)
+        clones[name] = model_utils.clone_T_times(proto, opt.seq_length)
+    end
 end
 
-local clones = {}
-for name,proto in pairs(protos) do
-    print('cloning '..name)
-    clones[name] = model_utils.clone_T_times(proto, opt.seq_length)
-end
 
 -- LSTM initial state (zero initially, but final state gets sent to initial state when we do BPTT)
 local initstate_c = torch.zeros(opt.batch_size, opt.rnn_size)
@@ -71,7 +73,7 @@ local initstate_h = initstate_c:clone()
 if opt.type == 'cuda' then
     for name,proto in pairs(protos) do
         print('cudafying '..name)
-        proto:cuda()
+        -- proto:cuda()
     end
 end
 
@@ -107,7 +109,9 @@ function feval(params_)
         predictions[t] = clones.output[t]:forward(lstm_h[t])
         -- loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t,{}}]) -- Test
         -- loss = loss + clones.criterion[t]:forward(predictions[t], fset[{t,{}}]) -- Test
-        loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{start+t+1,{}}])
+        loss_t = clones.criterion[t]:forward(predictions[t], trainset[{start+t+1,{}}])
+        -- print (loss_t)
+        loss = loss + loss_t
     end
 
     matio.save('predictions/test.mat', predictions)
@@ -160,11 +164,14 @@ for i = 1, iterations do
         break
     end
 
+    feval(params, optim_state)
     local _, loss = optim.adagrad(feval, params, optim_state)
     losses[#losses + 1] = loss[1]
 
     if i % opt.save_every == 0 then
+        print 'Saving LSTM'
         torch.save('nets/lstm.bin', protos)
+        torch.save('nets/lstm_clones.bin', clones)
     end
 
     if i % opt.print_every == 0 then
