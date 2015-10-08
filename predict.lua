@@ -2,6 +2,7 @@ require 'torch'
 require 'nn'
 require 'nngraph'
 require 'optim'
+require 'math'
 require 'os'
 local LSTM = require 'lstm'
 matio = require 'matio'
@@ -18,7 +19,7 @@ cmd:option('-rnn_size',    175,     'size of LSTM internal state')
 cmd:option('-seq_length',  32,      'number of timesteps to unroll to')
 
     -- General
-cmd:option('-max_epochs',140, 'number of full passes through the training data')
+cmd:option('-max_epochs', 1000, 'number of full passes through the training data')
 cmd:option('-batch_size',1, 'number of sequences to train on in parallel')
 cmd:option('-save_every',100,'save every 100 steps, overwriting the existing file')
 cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
@@ -46,6 +47,7 @@ local protos = {}
 local params, grad_params
 local clones = {}
 if opt.load_net then
+    print 'Loading network'
     protos = torch.load('nets/lstm.bin')
     clones = torch.load('nets/lstm_clones.bin')
     params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
@@ -73,7 +75,7 @@ local initstate_h = initstate_c:clone()
 if opt.type == 'cuda' then
     for name,proto in pairs(protos) do
         print('cudafying '..name)
-        -- proto:cuda()
+        proto:cuda()
     end
 end
 
@@ -82,7 +84,7 @@ local dfinalstate_c = initstate_c:clone()
 local dfinalstate_h = initstate_c:clone()
 
 -- do fwd/bwd and return loss, grad_params
-function feval(params_, pr)
+function feval(params_)
     if params_ ~= params then
         params:copy(params_)
     end
@@ -90,13 +92,13 @@ function feval(params_, pr)
 
     -- TODO BATCHES
     local start = torch.random(trainset:size()[1] - opt.seq_length - 1) -- Extra 1 for prediction
-    start = 0
+    -- start = 0
 
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
     local lstm_h = {[0]=initstate_h} -- output values of LSTM
     -- local predictions = {}           -- output prediction
-    local predictions = torch.Tensor(175, opt.seq_length)
+    local predictions = torch.Tensor(cqt_features, opt.seq_length)
     local loss = 0
 
     -- fset = torch.add(trainset, 1)
@@ -110,9 +112,6 @@ function feval(params_, pr)
         -- loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t,{}}]) -- Test
         -- loss = loss + clones.criterion[t]:forward(predictions[t], fset[{t,{}}]) -- Test
         loss_t = clones.criterion[t]:forward(predictions[{{},t}], trainset[{start+t+1,{}}])
-        if pr then
-            print (loss_t)
-        end
         loss = loss + loss_t
     end
 
@@ -124,7 +123,7 @@ function feval(params_, pr)
         -- backprop through loss
         -- local doutput_t = clones.criterion[t]:backward(predictions[t], fset[{t,{}}]) -- Test
         -- local doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{t,{}}]) -- Test
-        local doutput_t = clones.criterion[t]:backward(predictions[t], trainset[{start+t+1,{}}])
+        local doutput_t = clones.criterion[t]:backward(predictions[{{},t}], trainset[{start+t+1,{}}])
         -- Two cases for dloss/dh_t:
         --   1. h_T is only used once, (not to the next LSTM timestep).
         --   2. h_t is used twice, for the prediction and for the next step. To obey the
@@ -156,7 +155,7 @@ end
 
 -- optimization stuff
 local losses = {}
-local optim_state = {learningRate = 1e-5}
+local optim_state = {learningRate = 1e-3}
 local iterations =  opt.max_epochs
 local start = os.time()
 for i = 1, iterations do
@@ -164,7 +163,7 @@ for i = 1, iterations do
         break
     end
 
-    local _, loss = optim.adagrad(feval, params, false, optim_state)
+    local _, loss = optim.adagrad(feval, params, optim_state)
     losses[#losses + 1] = loss[1]
 
     if i % opt.save_every == 0 then
@@ -188,8 +187,8 @@ function test()
     local loss = 0
     local lstm_c = initstate_c
     local lstm_h = initstate_h
-    local predictions = torch.Tensor(175, trainset:size()[1])
-    predictions[{{},1}] = trainset[{1,{}}] -- Don't predict first input
+    local predictions = torch.Tensor(cqt_features, trainset:size()[1])
+    predictions[{{},1}] = trainset[{1,{}}] + 1e-5 -- Don't predict first input
 
     for t=1, trainset:size()[1] - 1 do
         x = 1
@@ -198,6 +197,11 @@ function test()
         local loss_t = clones.criterion[x]:forward(predictions[{{},t+1}], trainset[{t+1,{}}])
         loss = loss + loss_t
         print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f", t, loss_t, loss / t))
+    end
+
+    -- for t=1, opt.seq_length do
+    for t=1, trainset:size()[1] - 1 do
+        print (string.format('t=%d, SNR: %.2fdB\n', t, 10 * math.log10(math.pow(trainset[{t, {}}]:norm(), 2) / math.pow((trainset[{t, {}}] - predictions[{{}, t}]):norm(), 2))))
     end
 
     matio.save('predictions/SA1_pred.mat', predictions)
