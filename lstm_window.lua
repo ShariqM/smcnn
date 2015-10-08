@@ -5,7 +5,7 @@ local LSTM = {}
 -- Creates one timestep of one LSTM
 function LSTM.lstm_window(rnn_size)
     local x      = nn.Identity()()
-    local CVEC   = nn.Identity()() -- NumUnique by NumChars (36x80?)
+    local CVEC   = nn.Identity()() -- NumUnique by NumChars(U) (36x80?)
     local prev_c = nn.Identity()()
     local prev_h = nn.Identity()()
     local prev_k = nn.Identity()()
@@ -34,13 +34,12 @@ function LSTM.lstm_window(rnn_size)
     h2bh = nn.Linear(rnn_size, 1)(prev_h)
     h2kh = nn.Linear(rnn_size, 1)(prev_h)
     a    = nn.Exp(h2ah)
-    b    = nn.Exp(h2ab)
+    b    = nn.Exp(h2bh)
     k    = nn.Exp(h2kh) + prev_k -- Shift in space
 
     -- Does negative work?
-    phi  = nn.Mul(a, nn.Exp(nn.Mul(-b, nn.Square(k - u))))
+    phi  = nn.Mul(a, nn.Exp(nn.Mul(-b, nn.Square(k - u)))) -- FIXME Need vector but have scalar...?
     w    = nn.DotProductc(CVEC, Phi)
-
 
     tmp = nn.gModule({x, prev_c, prev_h, prev_w, prev_k}, {next_c, next_h, next_w, next_k})
     -- graph.dot(tmp.fg, 'LSTM', 'lstm.png') -- Really complicated...
