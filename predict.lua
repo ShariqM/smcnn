@@ -4,7 +4,8 @@ require 'nngraph'
 require 'optim'
 require 'math'
 require 'os'
-local LSTM = require 'lstm'
+-- local LSTM = require 'lstm'
+local LSTM = require 'lstm_window'
 matio = require 'matio'
 matio.use_lua_strings = true
 local model_utils=require 'model_utils'
@@ -54,7 +55,8 @@ if opt.load_net then
 else
     protos = {}
     -- protos.embed = nn.Sequential():add(nn.Linear(cqt_features, opt.rnn_size)) -- Maybe?
-    protos.lstm = LSTM.lstm(opt.rnn_size)
+    -- protos.lstm = LSTM.lstm(opt.rnn_size)
+    protos.lstm = LSTM.lstm_window(opt.rnn_size)
     protos.output = nn.Sequential():add(nn.Linear(opt.rnn_size, cqt_features))
     protos.criterion = nn.MSECriterion()
     params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
