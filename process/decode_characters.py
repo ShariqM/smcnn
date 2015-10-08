@@ -1,3 +1,4 @@
+# Just a test that encode is working properly
 import scipy.io as io
 import pdb
 from helpers import get_char2vec
