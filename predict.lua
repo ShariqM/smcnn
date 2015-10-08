@@ -16,7 +16,7 @@ cmd:option('-load_net', false,  'load pre-trained neural network')
 
     -- RNN Specific
 cmd:option('-rnn_size',    175,     'size of LSTM internal state')
-cmd:option('-seq_length',  32,      'number of timesteps to unroll to')
+cmd:option('-seq_length',  2,      'number of timesteps to unroll to')
 
     -- General
 cmd:option('-max_epochs', 1000, 'number of full passes through the training data')
@@ -92,7 +92,7 @@ function feval(params_)
 
     -- TODO BATCHES
     local start = torch.random(trainset:size()[1] - opt.seq_length - 1) -- Extra 1 for prediction
-    -- start = 0
+    start = 0
 
     ------------------- forward pass -------------------
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
@@ -199,8 +199,8 @@ function test()
         print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f", t, loss_t, loss / t))
     end
 
-    -- for t=1, opt.seq_length do
-    for t=1, trainset:size()[1] - 1 do
+    for t=2, opt.seq_length do
+    -- #for t=1, trainset:size()[1] - 1 do
         print (string.format('t=%d, SNR: %.2fdB\n', t, 10 * math.log10(math.pow(trainset[{t, {}}]:norm(), 2) / math.pow((trainset[{t, {}}] - predictions[{{}, t}]):norm(), 2))))
     end
 
