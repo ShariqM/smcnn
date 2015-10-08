@@ -18,7 +18,7 @@ cmd:option('-rnn_size',    175,     'size of LSTM internal state')
 cmd:option('-seq_length',  32,      'number of timesteps to unroll to')
 
     -- General
-cmd:option('-max_epochs',1000, 'number of full passes through the training data')
+cmd:option('-max_epochs',140, 'number of full passes through the training data')
 cmd:option('-batch_size',1, 'number of sequences to train on in parallel')
 cmd:option('-save_every',100,'save every 100 steps, overwriting the existing file')
 cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
@@ -82,7 +82,7 @@ local dfinalstate_c = initstate_c:clone()
 local dfinalstate_h = initstate_c:clone()
 
 -- do fwd/bwd and return loss, grad_params
-function feval(params_)
+function feval(params_, pr)
     if params_ ~= params then
         params:copy(params_)
     end
@@ -110,7 +110,9 @@ function feval(params_)
         -- loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t,{}}]) -- Test
         -- loss = loss + clones.criterion[t]:forward(predictions[t], fset[{t,{}}]) -- Test
         loss_t = clones.criterion[t]:forward(predictions[t], trainset[{start+t+1,{}}])
-        -- print (loss_t)
+        if pr then
+            print (loss_t)
+        end
         loss = loss + loss_t
     end
 
@@ -164,8 +166,7 @@ for i = 1, iterations do
         break
     end
 
-    feval(params, optim_state)
-    local _, loss = optim.adagrad(feval, params, optim_state)
+    local _, loss = optim.adagrad(feval, params, false, optim_state)
     losses[#losses + 1] = loss[1]
 
     if i % opt.save_every == 0 then
@@ -180,42 +181,24 @@ for i = 1, iterations do
     end
 end
 
--- Reset
--- local gc = torch.zeros(opt.batch_size, opt.rnn_size)
--- local gh = initstate_c:clone()
-
 -- Test
 print("*** --- ***           *** --- ***")
 print("*** --- *** Test Time *** --- ***")
 print("*** --- ***           *** --- ***")
-function test(params_)
-    if params_ ~= params then
-        params:copy(params_)
-    end
-    grad_params:zero()
 
-
+function test()
     local loss = 0
-    -- local lstm_c = initstate_c
-    -- local lstm_h = initstate_h
-    -- local lstm_c = {[0]=gc} -- internal cell states of LSTM
-    -- local lstm_h = {[0]=gh} -- output values of LSTM
-    local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
-    local lstm_h = {[0]=initstate_h} -- output values of LSTM
-    print (initstate_c)
-
+    local lstm_c = initstate_c
+    local lstm_h = initstate_h
 
     for t=1, opt.seq_length do
-        x = t
-        -- lstm_c, lstm_h = unpack(clones.lstm[x]:forward{trainset[{t,{}}], lstm_c, lstm_h}) -- 1 ok?
-        lstm_c[t], lstm_h[t] = unpack(clones.lstm[x]:forward{trainset[{t,{}}], lstm_c[t-1], lstm_h[t-1]})
-        local prediction = clones.output[x]:forward(lstm_h[t])
-        -- local prediction = clones.output[x]:forward(lstm_h)
-        local loss_t = loss + clones.criterion[x]:forward(prediction, trainset[{t+1,{}}])
+        x = 1
+        lstm_c, lstm_h = unpack(clones.lstm[x]:forward{trainset[{t,{}}], lstm_c, lstm_h}) -- 1 ok?
+        local prediction = clones.output[x]:forward(lstm_h)
+        local loss_t = clones.criterion[x]:forward(prediction, trainset[{t+1,{}}])
         loss = loss + loss_t
         print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f", t, loss_t, loss / t))
     end
 end
-
 
 test(params)
