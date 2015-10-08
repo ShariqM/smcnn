@@ -96,7 +96,7 @@ function feval(params_, pr)
     local lstm_c = {[0]=initstate_c} -- internal cell states of LSTM
     local lstm_h = {[0]=initstate_h} -- output values of LSTM
     -- local predictions = {}           -- output prediction
-    local predictions = torch.Tensor(opt.seq_length, 175)
+    local predictions = torch.Tensor(175, opt.seq_length)
     local loss = 0
 
     -- fset = torch.add(trainset, 1)
@@ -106,17 +106,15 @@ function feval(params_, pr)
         -- we could sample from the previous timestep and embed that, but that's
         -- more commonly done for LSTM encoder-decoder models
         lstm_c[t], lstm_h[t] = unpack(clones.lstm[t]:forward{trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1]})
-        predictions[t] = clones.output[t]:forward(lstm_h[t])
+        predictions[{{},t}] = clones.output[t]:forward(lstm_h[t])
         -- loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t,{}}]) -- Test
         -- loss = loss + clones.criterion[t]:forward(predictions[t], fset[{t,{}}]) -- Test
-        loss_t = clones.criterion[t]:forward(predictions[t], trainset[{start+t+1,{}}])
+        loss_t = clones.criterion[t]:forward(predictions[{{},t}], trainset[{start+t+1,{}}])
         if pr then
             print (loss_t)
         end
         loss = loss + loss_t
     end
-
-    matio.save('predictions/test.mat', predictions)
 
     ------------------ backward pass -------------------
     -- complete reverse order of the above
@@ -190,15 +188,19 @@ function test()
     local loss = 0
     local lstm_c = initstate_c
     local lstm_h = initstate_h
+    local predictions = torch.Tensor(175, trainset:size()[1])
+    predictions[{{},1}] = trainset[{1,{}}] -- Don't predict first input
 
-    for t=1, opt.seq_length do
+    for t=1, trainset:size()[1] - 1 do
         x = 1
         lstm_c, lstm_h = unpack(clones.lstm[x]:forward{trainset[{t,{}}], lstm_c, lstm_h}) -- 1 ok?
-        local prediction = clones.output[x]:forward(lstm_h)
-        local loss_t = clones.criterion[x]:forward(prediction, trainset[{t+1,{}}])
+        predictions[{{},t+1}] = clones.output[x]:forward(lstm_h)
+        local loss_t = clones.criterion[x]:forward(predictions[{{},t+1}], trainset[{t+1,{}}])
         loss = loss + loss_t
         print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f", t, loss_t, loss / t))
     end
+
+    matio.save('predictions/SA1_pred.mat', predictions)
 end
 
 test(params)
