@@ -1,0 +1,12 @@
+
+10-1-15
+- Loss on Prediction of first 32 time steps:
+  - iteration 16050, loss = 0.07039130, loss/seq_len = 0.00109986, gradnorm = 3.6434e-01
+- https://github.com/joanbruna/prediction - data_handling - create_training_timit_cqt
+
+10-7-15
+- 1024 timebins for each audio file.
+  - 3 seconds / 1024 ~= 3ms per bin
+  - 'd' PHN is 70-140Hz ~= 4-8 ms ~= 2-3bins
+  - The Phoneme data set does not contain spaces but the text does
+
