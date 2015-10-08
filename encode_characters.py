@@ -33,6 +33,7 @@ for mfilename in mfilenames:
     sent_idx[mfilename] = 0
 
 fnames = glob.glob('timit/TRAIN/*/*/*.TXT')
+fnames.sort()
 for fname in fnames:
     mfilename = get_mfname(fname)
     data = io.loadmat(mfilename)['X']
