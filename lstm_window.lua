@@ -36,28 +36,36 @@ function LSTM.lstm_window(rnn_size, char_vec_size)
     local vec_inc_u   = nn.Identity()() -- Hacky, descending from U to 1 elements
     local char_vecs   = nn.Identity()() -- NumUnique by NumChars(U) (36x80?)
     local prev_k      = nn.Identity()()
-    h2ah = nn.Linear(rnn_size, 1)(prev_h)
-    h2bh = nn.Linear(rnn_size, 1)(prev_h)
-    h2kh = nn.Linear(rnn_size, 1)(prev_h)
-    a    = nn.Exp()(h2ah)
-    b    = nn.Exp()(h2bh)
+
+    local h2ah = nn.Linear(rnn_size, 1)(prev_h)
+    local h2bh = nn.Linear(rnn_size, 1)(prev_h)
+    local h2kh = nn.Linear(rnn_size, 1)(prev_h)
+
+    local a    = nn.Exp()(h2ah)
+    local b    = nn.Exp()(h2bh)
     -- k    = nn.Add()({nn.Exp()(h2kh), prev_k}) -- Shift in space
-    k       = nn.CAddTable()({nn.Exp()(h2kh), prev_k}) -- Does this work for scalar
+    local k    = nn.CAddTable()({nn.Exp()(h2kh), prev_k}) -- Does this work for scalar
 
-    avec = nn.DotProduct()({vec_of_ones, a})  -- Ux1 = UX1 * 1x1
-    bvec = nn.DotProduct()({vec_of_ones, b})
-    kvec = nn.DotProduct()({vec_of_ones, k})
+    local avec = nn.DotProduct()({vec_of_ones, a})  -- Ux1 = UX1 * 1x1
+    local bvec = nn.DotProduct()({vec_of_ones, b})
+    local kvec = nn.DotProduct()({vec_of_ones, k})
 
-    tmp     = nn.CSubTable()({k, vec_inc_u})
-    Phi_sq  = nn.Square()(nn.CSubTable()({kvec, vec_inc_u}))
-    Phi_exp = nn.Exp()(nn.CMulTable()({bvec, Phi_sq})) -- XXX Didn't do neg, neg weights? XXX
-    Phi     = nn.CMulTable()({avec, Phi_exp})
-    next_w  = nn.DotProduct()({char_vecs, Phi}) -- AxU * Ux1 = Ax1
+    local Phi_sq  = nn.Square()(nn.CSubTable()({kvec, vec_inc_u}))
+    local Phi_exp = nn.Exp()(nn.CMulTable()({bvec, Phi_sq})) -- XXX Didn't do neg, neg weights? XXX
+    local Phi     = nn.CMulTable()({avec, Phi_exp})
+    local next_w  = nn.DotProduct()({char_vecs, Phi}) -- AxU * Ux1 = Ax1
 
     local next_k = k
     comp = nn.gModule({x, prev_c, prev_h, prev_w, prev_k, char_vecs,
                       vec_of_ones, vec_inc_u},
                       {next_c, next_h, next_w, next_k})
+
+
+    for i,node in ipairs(comp.forwardnodes) do
+        print (i)
+        print (node.data)
+        print ('Out', node.data.nSplitOutputs)
+    end
     -- graph.dot(comp.fg, 'LSTM', 'lstm.png') -- Really complicated...
     return comp
 end

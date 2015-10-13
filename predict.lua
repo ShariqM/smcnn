@@ -5,7 +5,7 @@ require 'optim'
 require 'math'
 require 'os'
 -- local LSTM = require 'lstm'
-local LSTM = require 'lstm_window'
+local LSTM = require 'lstm'
 matio = require 'matio'
 matio.use_lua_strings = true
 local model_utils=require 'model_utils'
@@ -16,8 +16,8 @@ cmd:option('-type',       'double', 'type: double | float | cuda')
 cmd:option('-load_net', false,  'load pre-trained neural network')
 
     -- RNN Specific
-cmd:option('-rnn_size',    175,     'size of LSTM internal state')
-cmd:option('-seq_length',  2,      'number of timesteps to unroll to')
+cmd:option('-rnn_size',    300,     'size of LSTM internal state')
+cmd:option('-seq_length',  7,      'number of timesteps to unroll to')
 
     -- General
 cmd:option('-max_epochs', 1000, 'number of full passes through the training data')
@@ -40,8 +40,8 @@ elseif opt.type == 'cuda' then
 end
 
 -- Load the Training and Test Set
-dofile('build_pdata.lua')
 cqt_features = 175
+dofile('build_pdata.lua')
 
 -- Network
 local protos = {}
@@ -56,7 +56,7 @@ else
     protos = {}
     -- protos.embed = nn.Sequential():add(nn.Linear(cqt_features, opt.rnn_size)) -- Maybe?
     -- protos.lstm = LSTM.lstm(opt.rnn_size)
-    protos.lstm = LSTM.lstm_window(opt.rnn_size)
+    protos.lstm = LSTM.lstm(cqt_features, opt.rnn_size)
     protos.output = nn.Sequential():add(nn.Linear(opt.rnn_size, cqt_features))
     protos.criterion = nn.MSECriterion()
     params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)
@@ -109,6 +109,7 @@ function feval(params_)
         -- we're feeding the *correct* things in here, alternatively
         -- we could sample from the previous timestep and embed that, but that's
         -- more commonly done for LSTM encoder-decoder models
+        -- lstm_c[t], lstm_h[t] = unpack(protos.lstm:forward{trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1]})
         lstm_c[t], lstm_h[t] = unpack(clones.lstm[t]:forward{trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1]})
         predictions[{{},t}] = clones.output[t]:forward(lstm_h[t])
         -- loss = loss + clones.criterion[t]:forward(predictions[t], trainset[{t,{}}]) -- Test
@@ -138,6 +139,7 @@ function feval(params_)
         end
 
         -- backprop through LSTM timestep
+        print (t, trainset:size())
         dlstm_c[t-1], dlstm_h[t-1] = unpack(clones.lstm[t]:backward(
             {trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1]},
             {dlstm_c[t], dlstm_h[t]}
@@ -201,7 +203,7 @@ function test()
         print(string.format("iteration %4d, loss = %6.8f, loss/seq_len = %6.8f", t, loss_t, loss / t))
     end
 
-    for t=2, opt.seq_length do
+    for t=1, opt.seq_length+1 do
     -- #for t=1, trainset:size()[1] - 1 do
         print (string.format('t=%d, SNR: %.2fdB\n', t, 10 * math.log10(math.pow(trainset[{t, {}}]:norm(), 2) / math.pow((trainset[{t, {}}] - predictions[{{}, t}]):norm(), 2))))
     end

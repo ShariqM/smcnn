@@ -3,14 +3,14 @@
 local LSTM = {}
 
 -- Creates one timestep of one LSTM
-function LSTM.lstm(rnn_size)
+function LSTM.lstm(cqt_features, rnn_size)
     local x = nn.Identity()()
     local prev_c = nn.Identity()()
     local prev_h = nn.Identity()()
 
     function new_input_sum()
         -- transforms input
-        local i2h            = nn.Linear(rnn_size, rnn_size)(x)
+        local i2h            = nn.Linear(cqt_features, rnn_size)(x)
         -- transforms previous timestep's output
         local h2h            = nn.Linear(rnn_size, rnn_size)(prev_h)
         return nn.CAddTable()({i2h, h2h})
@@ -27,9 +27,18 @@ function LSTM.lstm(rnn_size)
     })
     local next_h           = nn.CMulTable()({out_gate, nn.Tanh()(next_c)})
 
-    tmp = nn.gModule({x, prev_c, prev_h}, {next_c, next_h})
+    comp = nn.gModule({x, prev_c, prev_h}, {next_c, next_h})
     -- graph.dot(tmp.fg, 'LSTM', 'lstm.png') -- Really complicated...
-    return tmp
+    -- for i,node in ipairs(comp.forwardnodes) do
+        -- print ('i', i)
+        -- print (node.data)
+        -- print ('in', node.data.input)
+        -- print ('Out', node.data.nSplitOutputs)
+    -- end
+    -- debug.debug()
+
+    return comp
+
 end
 
 return LSTM

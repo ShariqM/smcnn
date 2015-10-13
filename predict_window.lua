@@ -118,6 +118,10 @@ function feval(params_)
         -- we're feeding the *correct* things in here, alternatively
         -- we could sample from the previous timestep and embed that, but that's
         -- more commonly done for LSTM encoder-decoder models
+
+        lstm_c[t], lstm_h[t], lstm_w[t], lstm_k[t]  = unpack(protos.lstm:forward{
+                trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1],
+                lstm_w[t-1], prev_k, char_vecs, vec_of_ones, vec_inc_u})
         lstm_c[t], lstm_h[t], lstm_w[t], lstm_k[t]  = unpack(clones.lstm[t]:forward{
                 trainset[{start+t,{}}], lstm_c[t-1], lstm_h[t-1],
                 lstm_w[t-1], prev_k, char_vecs, vec_of_ones, vec_inc_u})
