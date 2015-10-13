@@ -10,3 +10,8 @@
   - 'd' PHN is 70-140Hz ~= 4-8 ms ~= 2-3bins
   - The Phoneme data set does not contain spaces but the text does
 
+
+10-12-15
+- Each cqt vector is 2.048 seconds
+- Seems like the middle ~2 seconds are extracted from each file
+ -- FCJF0 I did  (2.924812 - 2.048) / 2 = 0.438406

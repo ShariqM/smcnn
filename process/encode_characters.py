@@ -26,7 +26,6 @@ def make_files():
         io.savemat(mfilename, {'X':data})
     io.savemat('mfilenames.mat', {'mfilenames':list(mfilenames)})
 
-#make_files()
 mfilenames = io.loadmat('mfilenames.mat')['mfilenames']
 sent_idx = {}
 for mfilename in mfilenames:
