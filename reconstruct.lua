@@ -36,48 +36,26 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor')
 end
 
-
 -- Load the Training and Test Set
 cqt_features = 175
 dofile('build_rdata.lua')
 
-
 -- Network
-function get_clone(net)
-    -- Write and Read the network in order to copy it
-    local mem = torch.MemoryFile("w"):binary()
-    mem:writeObject(net)
 
-    local reader = torch.MemoryFile(mem:storage(), "r"):binary()
-    local clone = reader:readObject()
-    reader:close()
-
-    local params, grad_params             = net:parameters()
-    local clone_params, clone_grad_params = clone:parameters()
-    for i = 1, #params do
-        clone_params[i]:set(params[i])
-        -- Don't copy the gradients otherwise they wipe eachother out
-    end
-
-    mem:close()
-    collectgarbage()
-    return clone
-end
-
- -- Parameters
+-- Parameters
 learningRate = 1e-7
-filt_size = {5, 5}
+filt_sizes = {5, 5}
 nchannels = {cqt_features, 100, 50, 20}
 poolsize = 10
-inpsize = 20
+inpsize = 40
 
 input_x1 = nn.Identity()()
 input_x2 = nn.Identity()()
 
 function new_encoder(input)
-    enc1 = nn.TemporalConvolution(nchannels[1], nchannels[2], filt_size[1])(input)
+    enc1 = nn.TemporalConvolution(nchannels[1], nchannels[2], filt_sizes[1])(input)
     enc2 = nn.ReLU()(enc1)
-    enc3 = nn.TemporalConvolution(nchannels[2], nchannels[3], filt_size[2])(enc2)
+    enc3 = nn.TemporalConvolution(nchannels[2], nchannels[3], filt_sizes[2])(enc2)
     enc4 = nn.ReLU()(enc3)
 
     pool = nn.TemporalAvgPooling(poolsize, nchannels[3])(enc4)
@@ -86,9 +64,9 @@ function new_encoder(input)
 end
 
 function new_decoder(input)
-    dec1 = nn.TemporalConvolution(nchannels[3], nchannels[2], filt_size[2])(input)
+    dec1 = nn.TemporalConvolution(nchannels[3], nchannels[2], filt_sizes[2])(input)
     dec2 = nn.ReLU()(dec1)
-    dec3 = nn.TemporalConvolution(nchannels[2], nchannels[1], filt_size[1])(dec2)
+    dec3 = nn.TemporalConvolution(nchannels[2], nchannels[1], filt_sizes[1])(dec2)
     dec4 = nn.ReLU()(dec3)
     return dec4
 end
@@ -121,16 +99,12 @@ output_x1 = new_decoder(enc_x1)
 
 distance = nn.PairwiseDistance(1)({pool_x1, pool_x2})
 snet = nn.gModule({input_x1, input_x2}, {output_x1, distance})
--- inet = nn.gModule({input_x1}, {output_x1})
--- snet = nn.gModule({input_x1, input_x2}, {distance})
 
 hinge = nn.HingeEmbeddingCriterion(1)
 mse   = nn.MSECriterion()
 
 function gradUpdate(net, x, y, hinge, mse, learningRate)
     output_x1, pred = unpack(net:forward(x))
-    -- output_x1 = net:forward(x)
-    -- pred = net:forward(x)
 
     merr = mse:forward(output_x1, y[1])
     herr = hinge:forward(pred, y[2])
@@ -140,22 +114,25 @@ function gradUpdate(net, x, y, hinge, mse, learningRate)
 
     net:zeroGradParameters()
     net:backward(x, {gradMSE, gradHinge})
-    -- net:backward(x, gradHinge)
-    -- net:backward(x, gradMSE)
     net:updateParameters(learningRate)
 end
 
-x1 = torch.rand(inpsize, cqt_features)
-x2 = torch.rand(inpsize, cqt_features)
+function get_narrow_x(x1, filt_sizes)
+    sum = 0
+    for i, f in pairs(filt_sizes) do
+        sum = sum + 2 * (f - 1) -- 2 * for backwards pass
+    end
+    start = torch.floor(sum / 2)
+    print (sum, start, sum)
+    return x1:narrow(1, start, x1:size()[1] - sum)
+end
+
+x1 = torch.Tensor(inpsize, cqt_features)
+x2 = torch.Tensor(inpsize, cqt_features)
+narrow_x1 = get_narrow_x(x1, filt_sizes)
 
 for i = 1, 10 do
-    hack_out_x1 = torch.rand(inpsize - 4 * (filt_size[1] - 1), cqt_features) -- FIXME
-    gradUpdate(snet, {x1,x2}, {hack_out_x1,1}, hinge, mse, learningRate)
-    -- gradUpdate(snet, x1, {hack_out_x1,1}, hinge, mse, learningRate)
+    gradUpdate(snet, {x1,x2}, {narrow_x1,1}, hinge, mse, learningRate)
     print ('Distance', snet:forward({x1,x2})[2][1])
     print ('Distance2', snet:forward({x2,x2})[2][1])
-    -- print ('Distance', snet:forward(x1))
-    -- print ('Distance2', snet:forward(x1))
-    -- print ('Distance', snet:forward({x1,x2})[1])
-    -- print ('Distance2', snet:forward({x1,x1})[1])
 end
