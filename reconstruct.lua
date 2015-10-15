@@ -43,25 +43,6 @@ dofile('build_rdata.lua')
 
 
 -- Network
- -- Parameters
-filt_size = {5, 5}
-nchannels = {100, 50, 20}
-poolsize = 10
-
- -- Architecture
-input = nn.Identity()()
-
-function new_encoder()
-    enc1 = nn.TemporalConvolution(cqt_features, nchannels[1], filt_size[1])(input)
-    enc2 = nn.ReLU()(enc1)
-    enc3 = nn.TemporalConvolution(nchannels[1], nchannels[2], filt_size[2])(enc2)
-    enc4 = nn.ReLU()(enc3)
-
-    pool = nn.TemporalAvgPooling(poolsize, nchannels[2], 0)(enc4)
-
-    return enc4, enc4 -- FIXME return pool
-end
-
 function get_clone(net)
     -- Write and Read the network in order to copy it
     local mem = torch.MemoryFile("w"):binary()
@@ -82,8 +63,94 @@ function get_clone(net)
     return clone
 end
 
+ -- Parameters
+filt_size = {5, 5}
+nchannels = {cqt_features, 100, 50, 20}
+poolsize = 10
+inpsize = 20
+
+input = nn.Identity()()
+input2 = nn.Identity()()
+
+ -- Architecture
+function new_encoder()
+    enc1 = nn.TemporalConvolution(nchannels[1], nchannels[2], filt_size[1])(input)
+    enc2 = nn.ReLU()(enc1)
+    enc3 = nn.TemporalConvolution(nchannels[2], nchannels[3], filt_size[2])(enc2)
+    enc4 = nn.ReLU()(enc3)
+
+    pool = nn.TemporalAvgPooling(poolsize, nchannels[3])(enc4)
+
+    return enc4, pool -- FIXME return pool
+end
+
 enc, out = new_encoder()
-net = nn.gModule( {input}, {out})
+net = nn.gModule({input}, {out})
 clone = get_clone(net)
 
+i1 = nn.Identity()()
+i2 = nn.Identity()()
+distance = nn.PairwiseDistance(1)({i1, i2})
+stable = nn.gModule({i1, i2}, {distance})
+
 criterion = nn.HingeEmbeddingCriterion(1) -- Argument is Margin What should this be?
+
+x = torch.rand(inpsize, cqt_features)
+y = torch.rand(inpsize, cqt_features)
+
+-- Use a typical generic gradient update function
+function gradUpdate(net, x, y, criterion, learningRate)
+    local pred = net:forward(x)
+    local err = criterion:forward(pred, y)
+    local gradCriterion = criterion:backward(pred, y)
+    net:zeroGradParameters()
+    net:backward(x, gradCriterion)
+    net:updateParameters(learningRate)
+end
+
+for i = 1, 1000  do
+    -- gradUpdate(stable, {x, y}, 1, criterion, 0.01)
+    lx = net:forward(x) -- 1x50 (averaged over time points for 50 channels)
+    ly = clone:forward(y)
+    pred = stable:forward({lx, ly}) -- Computes norm and gets a scalar
+    -- print ('disiance', pred)
+    print (pred[1])
+
+    err = criterion:forward(pred, 1) --- Scalar
+    grad_criterion = criterion:backward(pred, 1) -- == 1 ?
+    stable:zeroGradParameters()
+    net:zeroGradParameters()
+    grad_distance = stable:backward({lx,ly}, grad_criterion) -- 2 1x50 vectors
+    grad_net = net:backward(x, grad_distance[1]) -- Don't care about other gradient?
+    net:updateParameters(1e-7)
+
+    -- print('distance', stable:forward({lx, ly}))
+end
+
+
+
+--[[
+distance = nn.PairwiseDistance(1)({net(), clone()}) -- Is this right?
+stable = nn.gModule({input, input2}, {distance})
+
+criterion = nn.HingeEmbeddingCriterion(1) -- Argument is Margin What should this be?
+
+x = torch.rand(cqt_features)
+y = torch.rand(cqt_features)
+
+-- Use a typical generic gradient update function
+function gradUpdate(net, x, y, criterion, learningRate)
+    local pred = net:forward(x)
+    local err = criterion:forward(pred, y)
+    local gradCriterion = criterion:backward(pred, y)
+    net:zeroGradParameters()
+    net:backward(x, gradCriterion)
+    net:updateParameters(learningRate)
+end
+
+for i = 1, 10 do
+   gradUpdate(stable, {x, y}, 1, criterion, 0.01)
+   print(stable:forward({x, y})[1])
+end
+
+--]]

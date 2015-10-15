@@ -32,12 +32,13 @@ y = torch.rand(5)
 
 -- Use a typical generic gradient update function
 function gradUpdate(mlp, x, y, criterion, learningRate)
-local pred = mlp:forward(x)
-local err = criterion:forward(pred, y)
-local gradCriterion = criterion:backward(pred, y)
-mlp:zeroGradParameters()
-mlp:backward(x, gradCriterion)
-mlp:updateParameters(learningRate)
+    local pred = mlp:forward(x)
+    print ('pred', pred)
+    local err = criterion:forward(pred, y)
+    local gradCriterion = criterion:backward(pred, y)
+    mlp:zeroGradParameters()
+    mlp:backward(x, gradCriterion)
+    mlp:updateParameters(learningRate)
 end
 
 -- push the pair x and y together, notice how then the distance between them given
