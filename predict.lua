@@ -57,6 +57,7 @@ else
     -- protos.embed = nn.Sequential():add(nn.Linear(cqt_features, opt.rnn_size)) -- Maybe?
     -- protos.lstm = LSTM.lstm(opt.rnn_size)
     protos.lstm = LSTM.lstm(cqt_features, opt.rnn_size)
+    print (protos.lstm)
     protos.output = nn.Sequential():add(nn.Linear(opt.rnn_size, cqt_features))
     protos.criterion = nn.MSECriterion()
     params, grad_params = model_utils.combine_all_parameters(protos.lstm, protos.output)

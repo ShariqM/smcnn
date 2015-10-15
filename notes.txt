@@ -15,3 +15,9 @@
 - Each cqt vector is 2.048 seconds
 - Seems like the middle ~2 seconds are extracted from each file
  -- FCJF0 I did  (2.924812 - 2.048) / 2 = 0.438406
+
+10-13-15
+- change N to 32 * (multiple of 32)
+- call create_scattfilts
+- do invcqt
+

@@ -1,7 +1,7 @@
 local TemporalAvgPooling, parent = torch.class('nn.TemporalAvgPooling', 'nn.Module')
 
 function TemporalAvgPooling:__init(poolsize, inchannels, stride)
-   parent.__init(self)
+    parent.__init(self)
     self.stride = poolsize/2 or stride
     self.net = nn.Sequential()
     self.net:add(nn.TemporalConvolution(inchannels, inchannels, poolsize, self.stride))

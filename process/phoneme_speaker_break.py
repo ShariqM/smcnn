@@ -85,7 +85,23 @@ for phn, data in collect[dialect][speaker].items():
         longest = len(data)
 #print best_key, longest
 
+#for phn,data in collect[dialect][speaker].items():
+    #collect[dialect][speaker][phn] =  {'%d' % i: data[i] for i in range(len(data))}
+#
+#pdb.set_trace()
+#io.savemat('timit/TRAIN/PHN_SPK/phn_spk.mat', collect)
+
+sdict = {}
 for phn,data in collect[dialect][speaker].items():
-    sfile = 'timit/TRAIN/PHN_SPK/%s_%s_%s' % (dialect, speaker, phn)
-    dict_version = {'%d' % i: data[i] for i in range(len(data))}
-    io.savemat(sfile, dict_version)
+    for i in range(len(data)):
+        sdict['%s_%s_%s_%d' % (dialect, speaker, phn, i)] = data[i]
+
+io.savemat('timit/TRAIN/PHN_SPK/phn_spk.mat', sdict)
+
+#for phn,data in collect[dialect][speaker].items():
+    #sfile = 'timit/TRAIN/PHN_SPK/%s_%s_%s' % (dialect, speaker, phn)
+    #dict_version = {'%d' % i: data[i] for i in range(len(data))}
+    #io.savemat(sfile, {'G': dict_version})
+#
+#g = io.loadmat(sfile)
+#pdb.set_trace()
