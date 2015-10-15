@@ -38,7 +38,6 @@ def update_dict_2(phn):
     if not collect[dialect][speaker].has_key(phn):
         collect[dialect][speaker][phn] = []
 
-
 for fname in fnames:
     path = fname.split('/')
     dialect, speaker = path[2], path[3]
@@ -66,27 +65,27 @@ for fname in fnames:
 
         # If this Phoneme starts and ends in the window save it
         if pstart > bfreq and pstop < efreq:
-            fbin = floor((pstart-bfreq) / F_B)
+            sbin = floor((pstart-bfreq) / F_B)
             ebin = ceil((pstop-bfreq) / F_B)
 
-            b,e = FP * idx + fbin, FP * idx + ebin
+            b,e = FP * idx + sbin, FP * idx + ebin
             l = e - b
-            cqt_vect[:,0:l] = data[:,b:e]
-            collect[dialect][speaker][phn].append(cqt_vect)
+            collect[dialect][speaker][phn].append(data[:,b:e])
+
     sent_idx[mfilename] = idx + 1
     f.close()
 
 
+
 best_key = 'G'
 longest = -1
-for k,v in collect[dialect][speaker].items():
-    if len(v) > longest:
-        best_key = k
-        longest = len(v)
-print best_key, longest
+for phn, data in collect[dialect][speaker].items():
+    if len(data) > longest:
+        best_key = phn
+        longest = len(data)
+#print best_key, longest
 
-phn = best_key
-phn = 'ae'
-sfile = 'timit/TRAIN/PHN_SPK/%s_%s_%s' % (dialect, speaker, phn)
-io.savemat(sfile, {'X':collect[dialect][speaker][phn]})
-pdb.set_trace()
+for phn,data in collect[dialect][speaker].items():
+    sfile = 'timit/TRAIN/PHN_SPK/%s_%s_%s' % (dialect, speaker, phn)
+    dict_version = {'%d' % i: data[i] for i in range(len(data))}
+    io.savemat(sfile, dict_version)
