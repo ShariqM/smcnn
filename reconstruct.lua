@@ -59,21 +59,22 @@ function get_clone(net)
         -- Don't copy the gradients otherwise they wipe eachother out
     end
 
+    mem:close()
     collectgarbage()
     return clone
 end
 
  -- Parameters
+learningRate = 1e-7
 filt_size = {5, 5}
 nchannels = {cqt_features, 100, 50, 20}
 poolsize = 10
 inpsize = 20
 
-input = nn.Identity()()
-input2 = nn.Identity()()
+input_x1 = nn.Identity()()
+input_x2 = nn.Identity()()
 
- -- Architecture
-function new_encoder()
+function new_encoder(input)
     enc1 = nn.TemporalConvolution(nchannels[1], nchannels[2], filt_size[1])(input)
     enc2 = nn.ReLU()(enc1)
     enc3 = nn.TemporalConvolution(nchannels[2], nchannels[3], filt_size[2])(enc2)
@@ -81,76 +82,80 @@ function new_encoder()
 
     pool = nn.TemporalAvgPooling(poolsize, nchannels[3])(enc4)
 
-    return enc4, pool -- FIXME return pool
+    return enc4, pool
 end
 
-enc, out = new_encoder()
-net = nn.gModule({input}, {out})
-clone = get_clone(net)
+function new_decoder(input)
+    dec1 = nn.TemporalConvolution(nchannels[3], nchannels[2], filt_size[2])(input)
+    dec2 = nn.ReLU()(dec1)
+    dec3 = nn.TemporalConvolution(nchannels[2], nchannels[1], filt_size[1])(dec2)
+    dec4 = nn.ReLU()(dec3)
+    return dec4
+end
 
-i1 = nn.Identity()()
-i2 = nn.Identity()()
-distance = nn.PairwiseDistance(1)({i1, i2})
-stable = nn.gModule({i1, i2}, {distance})
+function tie(input_x1, x1, input_x2, x2)
+    px1 = x1
+    px2 = x2
+    while true do -- Walk the children copying the parameters as you go
+        params_px1 = px1.data.module:parameters()
+        params_px2 = px2.data.module:parameters()
 
-criterion = nn.HingeEmbeddingCriterion(1) -- Argument is Margin What should this be?
+        if params_px1 then
+            for i=1, #params_px1 do
+                params_px2[i]:set(params_px1[i])
+            end
+        end
 
-x = torch.rand(inpsize, cqt_features)
-y = torch.rand(inpsize, cqt_features)
+        if #px1.children == 0 then
+            break
+        end
+        px1 = px1.children[1]
+        px2 = px2.children[1]
+    end
+end
 
--- Use a typical generic gradient update function
-function gradUpdate(net, x, y, criterion, learningRate)
-    local pred = net:forward(x)
-    local err = criterion:forward(pred, y)
-    local gradCriterion = criterion:backward(pred, y)
+enc_x1, pool_x1 = new_encoder(input_x1)
+enc_x2, pool_x2 = new_encoder(input_x2)
+tie(input_x1, enc_x1, input_x2, enc_x2)
+output_x1 = new_decoder(enc_x1)
+
+distance = nn.PairwiseDistance(1)({pool_x1, pool_x2})
+snet = nn.gModule({input_x1, input_x2}, {output_x1, distance})
+-- inet = nn.gModule({input_x1}, {output_x1})
+-- snet = nn.gModule({input_x1, input_x2}, {distance})
+
+hinge = nn.HingeEmbeddingCriterion(1)
+mse   = nn.MSECriterion()
+
+function gradUpdate(net, x, y, hinge, mse, learningRate)
+    output_x1, pred = unpack(net:forward(x))
+    -- output_x1 = net:forward(x)
+    -- pred = net:forward(x)
+
+    merr = mse:forward(output_x1, y[1])
+    herr = hinge:forward(pred, y[2])
+
+    gradMSE   = mse:backward(output_x1, y[1])
+    gradHinge = hinge:backward(pred, y[2])
+
     net:zeroGradParameters()
-    net:backward(x, gradCriterion)
+    net:backward(x, {gradMSE, gradHinge})
+    -- net:backward(x, gradHinge)
+    -- net:backward(x, gradMSE)
     net:updateParameters(learningRate)
 end
 
-for i = 1, 1000  do
-    -- gradUpdate(stable, {x, y}, 1, criterion, 0.01)
-    lx = net:forward(x) -- 1x50 (averaged over time points for 50 channels)
-    ly = clone:forward(y)
-    pred = stable:forward({lx, ly}) -- Computes norm and gets a scalar
-    -- print ('disiance', pred)
-    print (pred[1])
-
-    err = criterion:forward(pred, 1) --- Scalar
-    grad_criterion = criterion:backward(pred, 1) -- == 1 ?
-    stable:zeroGradParameters()
-    net:zeroGradParameters()
-    grad_distance = stable:backward({lx,ly}, grad_criterion) -- 2 1x50 vectors
-    grad_net = net:backward(x, grad_distance[1]) -- Don't care about other gradient?
-    net:updateParameters(1e-7)
-
-    -- print('distance', stable:forward({lx, ly}))
-end
-
-
-
---[[
-distance = nn.PairwiseDistance(1)({net(), clone()}) -- Is this right?
-stable = nn.gModule({input, input2}, {distance})
-
-criterion = nn.HingeEmbeddingCriterion(1) -- Argument is Margin What should this be?
-
-x = torch.rand(cqt_features)
-y = torch.rand(cqt_features)
-
--- Use a typical generic gradient update function
-function gradUpdate(net, x, y, criterion, learningRate)
-    local pred = net:forward(x)
-    local err = criterion:forward(pred, y)
-    local gradCriterion = criterion:backward(pred, y)
-    net:zeroGradParameters()
-    net:backward(x, gradCriterion)
-    net:updateParameters(learningRate)
-end
+x1 = torch.rand(inpsize, cqt_features)
+x2 = torch.rand(inpsize, cqt_features)
 
 for i = 1, 10 do
-   gradUpdate(stable, {x, y}, 1, criterion, 0.01)
-   print(stable:forward({x, y})[1])
+    hack_out_x1 = torch.rand(inpsize - 4 * (filt_size[1] - 1), cqt_features) -- FIXME
+    gradUpdate(snet, {x1,x2}, {hack_out_x1,1}, hinge, mse, learningRate)
+    -- gradUpdate(snet, x1, {hack_out_x1,1}, hinge, mse, learningRate)
+    print ('Distance', snet:forward({x1,x2})[2][1])
+    print ('Distance2', snet:forward({x2,x2})[2][1])
+    -- print ('Distance', snet:forward(x1))
+    -- print ('Distance2', snet:forward(x1))
+    -- print ('Distance', snet:forward({x1,x2})[1])
+    -- print ('Distance2', snet:forward({x1,x1})[1])
 end
-
---]]
