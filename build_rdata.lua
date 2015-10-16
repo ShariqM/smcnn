@@ -13,7 +13,6 @@ for name, data in pairs(data) do
         if data:size()[2] > 20 then
             local idx = string.split(name, "_")[4]
             trainset[phn][idx] = data
-            print (data:size()[2])
         end
     end
 end

@@ -52,11 +52,4 @@ function gradUpdate(net, x, y, hinge, mse, learningRate)
     net:updateParameters(learningRate)
 end
 
-function get_narrow_x(x1, filt_sizes)
-    sum = 0
-    for i, f in pairs(filt_sizes) do
-        sum = sum + 2 * (f - 1) -- 2 * for backwards pass
-    end
-    start = torch.floor(sum / 2)
-    return x1:narrow(1, start, x1:size()[1] - sum)
-end
+

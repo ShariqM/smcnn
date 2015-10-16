@@ -13,7 +13,6 @@ end
 function TemporalAvgPooling:updateOutput(input)
     self.output = self.net:updateOutput(input)
     out = self.output
-    debug.debug()
     return self.output
 end
 
