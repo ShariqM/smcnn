@@ -58,6 +58,5 @@ function get_narrow_x(x1, filt_sizes)
         sum = sum + 2 * (f - 1) -- 2 * for backwards pass
     end
     start = torch.floor(sum / 2)
-    print (sum, start, sum)
     return x1:narrow(1, start, x1:size()[1] - sum)
 end

@@ -6,11 +6,6 @@ require 'math'
 require 'os'
 require 'TemporalAvgPooling'
 require 'helpers'
--- local LSTM = require 'lstm'
-local LSTM = require 'lstm'
-matio = require 'matio'
-matio.use_lua_strings = true
-local model_utils=require 'model_utils'
 
 -- SETUP
 local cmd = torch.CmdLine()
@@ -44,10 +39,10 @@ dofile('build_rdata.lua')
 -- Network
     -- Parameters
 learningRate = 1e-7
-filt_sizes = {5, 5}
-nchannels = {cqt_features, 100, 50, 20}
+filt_sizes = {9, 9}
+nchannels = {cqt_features, 175, 125}
 poolsize = 10
-inpsize = 20
+inpsize = 40
 
     -- Architecture
 input_x1 = nn.Identity()()

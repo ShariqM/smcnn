@@ -4,17 +4,16 @@ function TemporalAvgPooling:__init(poolsize, inchannels, stride)
     parent.__init(self)
     self.stride = poolsize/2 or stride
     self.net = nn.Sequential()
-    -- print (self.stride)
-    -- self.net:add(nn.TemporalConvolution(inchannels, inchainels, poolsize)) -- Hmm...
     self.net:add(nn.TemporalConvolution(inchannels, inchannels, poolsize, self.stride))
 
     self.net.modules[1].weight:fill(1/poolsize)
     self.net.modules[1].bias:fill(0)
-
 end
 
 function TemporalAvgPooling:updateOutput(input)
     self.output = self.net:updateOutput(input)
+    out = self.output
+    debug.debug()
     return self.output
 end
 
