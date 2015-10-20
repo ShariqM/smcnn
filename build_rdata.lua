@@ -14,7 +14,7 @@ for name, data in pairs(all_data) do
         -- if data:size()[2] > 20 then
             local idx = tonumber(string.split(name, "_")[4])
             trainset[phn][idx] = data
-            print (idx, data:size())
+            -- print (idx, data:size())
         end
     end
 end
