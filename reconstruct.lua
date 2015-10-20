@@ -80,24 +80,14 @@ function get_narrow_x(x1, filt_sizes)
 end
 
 -- Train
--- x1 = torch.Tensor(inpsize, cqt_features)
--- x2 = torch.Tensor(inpsize, cqt_features)
--- x1 = trainset['ix'][0]:narrow(2, 1, inpsize):transpose(1,2)
--- x2 = trainset['ix'][1]:narrow(2, 1, inpsize):transpose(1,2)
 x1 = trainset['ix'][0]:transpose(1,2)
 x2 = trainset['ix'][1]:transpose(1,2)
--- x1 = trainset['ix'][0]
--- x2 = trainset['ix'][1]
 narrow_x1 = get_narrow_x(x1, filt_sizes)
 hinge_size = get_desired_hinge(x1, filt_sizes, poolsize)
 hinge_signal = torch.Tensor(hinge_size):fill(1)
+assert (snet:forward({x2,x2})[2][1] == 0) -- Distance between identitical x == 0
 
 for i = 1, iterations do
-    -- print ('Distance', snet:firward({x1,x2})[2]:size()[1])
     print ('Distance', snet:forward({x1,x2})[2][1])
-    -- gradUpdate(snet, {x1,x2}, {narrow_x1, 1}, hinge, mse, learningRate)
     gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
-    -- gradUpdate(snet, {x1,x2}, {narrow_x1,torch.Tensor(3):fill(1)}, hinge, mse, learningRate)
-    -- gradUpdate(snet, {x1,x2}, {narrow_x1,torch.Tensor(3):fill(0)}, hinge, mse, learningRate)
-    -- print ('Distance2', snet:forward({x2,x2})[2][1])
 end
