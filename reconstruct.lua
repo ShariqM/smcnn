@@ -41,7 +41,7 @@ dofile('build_rdata.lua')
 learningRate = 1e-7
 filt_sizes = {5, 5}
 nchannels = {cqt_features, 175, 125}
-poolsize = 20
+poolsize = 10
 inpsize  = 20
 
     -- Architecture
@@ -67,12 +67,13 @@ function get_comp_lost(filt_sizes, mult) -- mult - Pass 1 for encoding, 2 for en
     return sum
 end
 
-function get_desired_hinge(x1, filt_sizes, poolsize):
-    sum = get_comp_lost(1)
+function get_desired_hinge(x1, filt_sizes, poolsize)
+    sum = get_comp_lost(filt_sizes, 1)
     return 1 + torch.floor((x1:size()[1] - poolsize - sum)/(poolsize/2))
+end
 
-function get_narrow_x(x1, filt_sizes, po)
-    sum = get_comp_lost(2)
+function get_narrow_x(x1, filt_sizes)
+    sum = get_comp_lost(filt_sizes, 2)
     start = torch.floor(sum / 2)
     return x1:narrow(1, start, x1:size()[1] - sum)
 end
@@ -80,12 +81,15 @@ end
 -- Train
 x1 = torch.Tensor(inpsize, cqt_features)
 x2 = torch.Tensor(inpsize, cqt_features)
+-- i1 = trainset['ix'][0]
+-- x2 = trainset['ix'][1]
 narrow_x1 = get_narrow_x(x1, filt_sizes)
 
 for i = 1, 10 do
-    print ('Distance', snet:forward({x1,x2})[2]:size()[1])
-    -- print ('Distance', snet:forward({x1,x2})[2])
+    -- print ('Distance', snet:firward({x1,x2})[2]:size()[1])
+    print ('Distance', snet:forward({x1,x2})[2][1])
+    gradUpdate(snet, {x1,x2}, {narrow_x1, 1}, hinge, mse, learningRate)
     -- gradUpdate(snet, {x1,x2}, {narrow_x1,torch.Tensor(3):fill(1)}, hinge, mse, learningRate)
-    gradUpdate(snet, {x1,x2}, {narrow_x1,torch.Tensor(3):fill(0)}, hinge, mse, learningRate)
-    -- print ('Distance2', snet:forward({x2,x2})[2][1])
+    -- gradUpdate(snet, {x1,x2}, {narrow_x1,torch.Tensor(3):fill(0)}, hinge, mse, learningRate)
+    print ('Distance2', snet:forward({x2,x2})[2][1])
 end
