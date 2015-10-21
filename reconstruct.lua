@@ -5,6 +5,7 @@ require 'optim'
 require 'math'
 require 'os'
 require 'TemporalAvgPooling'
+require 'PairwiseBatchDistance'
 require 'helpers'
 
 -- SETUP
@@ -52,7 +53,7 @@ enc_x2, pool_x2 = new_encoder(input_x2, nchannels, filt_sizes, poolsize)
 tie_weights(enc_x1, enc_x2)
 output_x1 = new_decoder(enc_x1, nchannels, filt_sizes)
 
-dist = nn.PairwiseDistance(1)({pool_x1, pool_x2})
+dist = nn.PairwiseBatchDistance(1)({pool_x1, pool_x2})
 snet = nn.gModule({input_x1, input_x2}, {output_x1, dist})
 
 hinge = nn.HingeEmbeddingCriterion(1)
@@ -67,7 +68,7 @@ for i = 1, 100 do
     x2_batch = torch.Tensor(batch_size, max_length, cqt_features)
     max_pool = get_out_length_2(max_length, filt_sizes, poolsize)
 
-    hinge_signal = torch.Tensor(batch_size, max_pool):fill(1)
+    hinge_signals = torch.Tensor(batch_size, max_pool):fill(1)
     end_length = max_length - get_comp_lost(filt_sizes, 2)
     reconstruct_signal = torch.Tensor(batch_size, end_length, cqt_features)
 
@@ -85,7 +86,7 @@ for i = 1, 100 do
         x2_batch[{k, {1,slen}, {}}] = x2[{{1,slen}, {}}]
 
         if x1_phn ~= x2_phn then
-            hinge_signal[{k,{1,tlen}}]:fill(-1)
+            hinge_signals[{k,{1,tlen}}]:fill(-1)
         end
         reconstruct_signal[{k,{},{}}] = x1_batch[{k, {1,end_length}, {}}]
 
@@ -93,21 +94,19 @@ for i = 1, 100 do
 
     idx_1 = math.random(1, #ts.all)
     x1, x1_phn, x1_speaker, x1_len = unpack(ts['all'][idx_1])
-
+--
     idx_2 = ts.hs[x1_len][math.random(1, #ts.hs[x1_len])]
     x2, x2_phn, x2_speaker, x2_len = unpack(ts['all'][idx_2])
 
     narrow_x1 = get_narrow_x(x1, filt_sizes)
     hinge_signal = torch.Tensor(x1_len):fill(toInt(x1_phn == x2_phn))
-    print ('Compare', x1_phn, x2_phn, hinge_signal[1])
+    -- print ('Compare', x1_phn, x2_phn, hinge_signal[1])
 
-    print 'ss'
-    print ('Start-Distance', snet:forward({x1_batch,x2_batch}))
-    print 'tt'
+    print ('Start-Distance', snet:forward({x1_batch,x2_batch})[2])
     -- print ('Start-Distance', snet:forward({x1,x2})[2][1])
     for j = 1, iterations do
-        -- gradUpdate(snet, {x1_batch,x2_batch}, {reconstruct_signal, hinge_signal}, hinge, mse, learningRate)
-        gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
+        gradUpdate(snet, {x1_batch,x2_batch}, {reconstruct_signal, hinge_signals}, hinge, mse, learningRate)
+        -- gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
     end
 
     -- print ('Start-Distance', snet:forward({x1,x2})[2][1])
