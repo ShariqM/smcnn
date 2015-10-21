@@ -11,8 +11,13 @@ function TemporalAvgPooling:__init(poolsize, inchannels, stride)
 end
 
 function TemporalAvgPooling:updateOutput(input)
+    -- print ('g',input:size())
+    -- debug.debug()
+    -- print ('f',input:size())
     self.output = self.net:updateOutput(input)
     out = self.output
+    -- print ('out', out)
+    -- debug.debug()
     return self.output
 end
 

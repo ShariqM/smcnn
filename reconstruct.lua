@@ -58,8 +58,39 @@ snet = nn.gModule({input_x1, input_x2}, {output_x1, dist})
 hinge = nn.HingeEmbeddingCriterion(1)
 mse   = nn.MSECriterion()
 
+math.randomseed(os.time()) -- Have to do this to get diff numbers ...
 -- Train
+max_length = 90 -- Must be poolsize more than max_lenght build_rdata (FIXME so ugly)
+batch_size = 2
 for i = 1, 100 do
+    x1_batch = torch.Tensor(batch_size, max_length, cqt_features)
+    x2_batch = torch.Tensor(batch_size, max_length, cqt_features)
+    max_pool = get_out_length_2(max_length, filt_sizes, poolsize)
+
+    hinge_signal = torch.Tensor(batch_size, max_pool):fill(1)
+    end_length = max_length - get_comp_lost(filt_sizes, 2)
+    reconstruct_signal = torch.Tensor(batch_size, end_length, cqt_features)
+
+    for k = 1, batch_size do
+        idx_1 = math.random(1, #ts.all)
+        x1, x1_phn, x1_speaker, x1_tlen = unpack(ts['all'][idx_1])
+
+        idx_2 = math.random(1, #ts.all)
+        x2, x2_phn, x2_speaker, x2_tlen = unpack(ts['all'][idx_2])
+
+        -- slen = math.min(x1:size()[1], x2:size()[1])
+        tlen = math.min(x1_tlen, x2_tlen)
+        slen = 8 + poolsize + (tlen - 1) * ((poolsize)/2) -- Ugly FIXME
+        x1_batch[{k, {1,slen}, {}}] = x1[{{1,slen}, {}}]
+        x2_batch[{k, {1,slen}, {}}] = x2[{{1,slen}, {}}]
+
+        if x1_phn ~= x2_phn then
+            hinge_signal[{k,{1,tlen}}]:fill(-1)
+        end
+        reconstruct_signal[{k,{},{}}] = x1_batch[{k, {1,end_length}, {}}]
+
+    end
+
     idx_1 = math.random(1, #ts.all)
     x1, x1_phn, x1_speaker, x1_len = unpack(ts['all'][idx_1])
 
@@ -70,10 +101,19 @@ for i = 1, 100 do
     hinge_signal = torch.Tensor(x1_len):fill(toInt(x1_phn == x2_phn))
     print ('Compare', x1_phn, x2_phn, hinge_signal[1])
 
-    print ('Start-Distance', snet:forward({x1,x2})[2][1])
+    print 'ss'
+    print ('Start-Distance', snet:forward({x1_batch,x2_batch}))
+    print 'tt'
+    -- print ('Start-Distance', snet:forward({x1,x2})[2][1])
     for j = 1, iterations do
+        -- gradUpdate(snet, {x1_batch,x2_batch}, {reconstruct_signal, hinge_signal}, hinge, mse, learningRate)
         gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
     end
-    print ('End-Distance', snet:forward({x1,x2})[2][1])
+
+    -- print ('Start-Distance', snet:forward({x1,x2})[2][1])
+    -- for j = 1, iterations do
+        -- gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
+    -- end
+    -- print ('End-Distance', snet:forward({x1,x2})[2][1])
 end
 

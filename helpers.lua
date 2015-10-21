@@ -46,9 +46,12 @@ function get_comp_lost(filt_sizes, mult) -- mult - Pass 1 for encoding, 2 for en
     return sum
 end
 
-function get_out_length(x, filt_sizes, poolsize)
+function get_out_length_2(size, filt_sizes, poolsize)
     sum = get_comp_lost(filt_sizes, 1)
-    return 1 + torch.floor((x:size()[1] - poolsize - sum)/(poolsize/2))
+    return 1 + torch.floor((size - poolsize - sum)/(poolsize/2))
+end
+function get_out_length(x, filt_sizes, poolsize)
+    return get_out_length_2(x:size()[1], filt_sizes, poolsize)
 end
 
 function get_narrow_x(x1, filt_sizes)
@@ -79,10 +82,11 @@ function toInt(b)
     end
 end
 
-function addKey(T, key)
-    if type(T[key]) == nil then
-        T[key] = {}
+function addKey(T, key, elem)
+    if T[key] == nil then
+        T[key] = elem
     end
+    return T
 end
 
 function tableLength(T)
