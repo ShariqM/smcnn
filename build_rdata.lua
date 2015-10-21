@@ -11,7 +11,7 @@ ts['all'] = {}
 ts['hs']={{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}}
 
 all_data = matio.load('timit/TRAIN/PHN_SPK/phn_spk.mat' % speaker)
-min_length = math.min(poolsize + get_comp_lost(filt_sizes, 1), get_comp_lost(filt_sizes, 2))
+min_length = math.max(poolsize + get_comp_lost(filt_sizes, 1), get_comp_lost(filt_sizes, 2))
 print ('m', min_length)
 local count = 1
 for name, data in pairs(all_data) do
