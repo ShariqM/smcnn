@@ -59,20 +59,12 @@ hinge = nn.HingeEmbeddingCriterion(1)
 mse   = nn.MSECriterion()
 
 -- Train
--- narrow_x1 = get_narrow_x(x1, filt_sizes)
--- hs_x1 = get_out_length(x1, filt_sizes, poolsize)
--- hs_x2 = get_out_length(x2, filt_sizes, poolsize)
--- print ('hs_x1:', hs_x1, 'hs_x2:', hs_x2)
--- hinge_signal = torch.Tensor(hs_x1):fill(1)
--- assert (snet:forward({x2,x2})[2][1] == 0) -- Distance between identitical x == 0
-
 for i = 1, 100 do
     idx_1 = math.random(1, #ts.all)
     x1, x1_phn, x1_speaker, x1_len = unpack(ts['all'][idx_1])
+
     idx_2 = ts.hs[x1_len][math.random(1, #ts.hs[x1_len])]
     x2, x2_phn, x2_speaker, x2_len = unpack(ts['all'][idx_2])
-    -- print ('hs_x1:', x1_len, 'hs_x2:', x2_len)
-    -- print ('x1', idx_1, 'x2', idx_2)
 
     narrow_x1 = get_narrow_x(x1, filt_sizes)
     hinge_signal = torch.Tensor(x1_len):fill(toInt(x1_phn == x2_phn))
