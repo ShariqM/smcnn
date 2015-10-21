@@ -38,6 +38,25 @@ function tie_weights(x1, x2)
     end
 end
 
+function get_comp_lost(filt_sizes, mult) -- mult - Pass 1 for encoding, 2 for encode&decoe
+    sum = 0
+    for i, f in pairs(filt_sizes) do
+        sum = sum + mult * (f - 1) -- 2 * for backwards pass
+    end
+    return sum
+end
+
+function get_out_length(x, filt_sizes, poolsize)
+    sum = get_comp_lost(filt_sizes, 1)
+    return 1 + torch.floor((x:size()[1] - poolsize - sum)/(poolsize/2))
+end
+
+function get_narrow_x(x1, filt_sizes)
+    sum = get_comp_lost(filt_sizes, 2)
+    start = torch.floor(sum / 2)
+    return x1:narrow(1, start, x1:size()[1] - sum)
+end
+
 function gradUpdate(net, x, y, hinge, mse, learningRate)
     output_x1, pred = unpack(net:forward(x))
 
@@ -52,4 +71,22 @@ function gradUpdate(net, x, y, hinge, mse, learningRate)
     net:updateParameters(learningRate)
 end
 
+function toInt(b)
+    if b then
+        return 1
+    else
+        return -1
+    end
+end
 
+function addKey(T, key)
+    if type(T[key]) == nil then
+        T[key] = {}
+    end
+end
+
+function tableLength(T)
+  local count = 0
+  for _ in pairs(T) do count = count + 1 end
+  return count
+end

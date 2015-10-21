@@ -32,20 +32,18 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor')
 end
 
--- Load the Training and Test Set
+-- Parameters
 cqt_features = 175
-dofile('build_rdata.lua')
-
--- Network
-    -- Parameters
-iterations = 1000
-learningRate = 2e-5
+iterations = 100
+learningRate = 1e-4
 filt_sizes = {5, 5}
 nchannels = {cqt_features, 175, 125}
 poolsize = 10
-inpsize  = 26
 
-    -- Architecture
+-- Load the Training and Test Set
+dofile('build_rdata.lua')
+
+-- Architecture
 input_x1 = nn.Identity()()
 input_x2 = nn.Identity()()
 
@@ -60,34 +58,30 @@ snet = nn.gModule({input_x1, input_x2}, {output_x1, dist})
 hinge = nn.HingeEmbeddingCriterion(1)
 mse   = nn.MSECriterion()
 
-function get_comp_lost(filt_sizes, mult) -- mult - Pass 1 for encoding, 2 for encode&decoe
-    sum = 0
-    for i, f in pairs(filt_sizes) do
-        sum = sum + mult * (f - 1) -- 2 * for backwards pass
-    end
-    return sum
-end
-
-function get_desired_hinge(x1, filt_sizes, poolsize)
-    sum = get_comp_lost(filt_sizes, 1)
-    return 1 + torch.floor((x1:size()[1] - poolsize - sum)/(poolsize/2))
-end
-
-function get_narrow_x(x1, filt_sizes)
-    sum = get_comp_lost(filt_sizes, 2)
-    start = torch.floor(sum / 2)
-    return x1:narrow(1, start, x1:size()[1] - sum)
-end
-
 -- Train
-x1 = trainset['ix'][0]:transpose(1,2)
-x2 = trainset['ix'][1]:transpose(1,2)
-narrow_x1 = get_narrow_x(x1, filt_sizes)
-hinge_size = get_desired_hinge(x1, filt_sizes, poolsize)
-hinge_signal = torch.Tensor(hinge_size):fill(1)
-assert (snet:forward({x2,x2})[2][1] == 0) -- Distance between identitical x == 0
+-- narrow_x1 = get_narrow_x(x1, filt_sizes)
+-- hs_x1 = get_out_length(x1, filt_sizes, poolsize)
+-- hs_x2 = get_out_length(x2, filt_sizes, poolsize)
+-- print ('hs_x1:', hs_x1, 'hs_x2:', hs_x2)
+-- hinge_signal = torch.Tensor(hs_x1):fill(1)
+-- assert (snet:forward({x2,x2})[2][1] == 0) -- Distance between identitical x == 0
 
-for i = 1, iterations do
-    print ('Distance', snet:forward({x1,x2})[2][1])
-    gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
+for i = 1, 100 do
+    idx_1 = math.random(1, #ts.all)
+    x1, x1_phn, x1_speaker, x1_len = unpack(ts['all'][idx_1])
+    idx_2 = ts.hs[x1_len][math.random(1, #ts.hs[x1_len])]
+    x2, x2_phn, x2_speaker, x2_len = unpack(ts['all'][idx_2])
+    -- print ('hs_x1:', x1_len, 'hs_x2:', x2_len)
+    -- print ('x1', idx_1, 'x2', idx_2)
+
+    narrow_x1 = get_narrow_x(x1, filt_sizes)
+    hinge_signal = torch.Tensor(x1_len):fill(toInt(x1_phn == x2_phn))
+    print ('Compare', x1_phn, x2_phn, hinge_signal[1])
+
+    print ('Start-Distance', snet:forward({x1,x2})[2][1])
+    for j = 1, iterations do
+        gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
+    end
+    print ('End-Distance', snet:forward({x1,x2})[2][1])
 end
+
