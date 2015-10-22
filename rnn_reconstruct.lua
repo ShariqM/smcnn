@@ -25,6 +25,7 @@ matio.use_lua_strings = true
 local model_utils=require 'model_utils'
 local LSTM = require 'models.lstm'
 local RNN = require 'models.rnn'
+local TimitBatchLoader = require 'TimitBatchLoader'
 
 cmd = torch.CmdLine()
 cmd:text()
@@ -45,7 +46,7 @@ cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start d
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',1,'number of sequences to train on in parallel')
+cmd:option('-batch_size',10,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',50,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
@@ -82,7 +83,7 @@ end
 
 -- Load the Training and Test Set
 cqt_features = 175
-dofile('build_data/build_pdata.lua')
+local loader = TimitBatchLoader.create(cqt_features, opt.batch_size, opt.seq_length)
 
 print('creating an ' .. opt.model .. ' with ' .. opt.num_layers .. ' layers')
 protos = {}
@@ -149,8 +150,7 @@ function feval(x)
     grad_params:zero()
 
     ------------------ get minibatch -------------------
-    local start = torch.random(trainset:size()[1] - opt.seq_length)
-    x = trainset[{{start,start+opt.seq_length}, {}}]
+    x = loader:next_batch()
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
 
     ------------------- forward pass -------------------
@@ -161,7 +161,7 @@ function feval(x)
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
-        local lst = clones.rnn[t]:forward{x[{t,{}}], unpack(rnn_state[t-1])}
+        local lst = clones.rnn[t]:forward{x[{{},t,{}}], unpack(rnn_state[t-1])}
 
         rnn_state[t] = {}
         for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
@@ -169,7 +169,7 @@ function feval(x)
         pool_state[t] = lst[#lst]
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
 
-        loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{t,{}}])
+        loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
 
         prev_pool = pool_state[t]
         if t > 3 then
@@ -183,7 +183,7 @@ function feval(x)
     local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
-        local doutput_t = clones.criterion_rct[t]:backward(reconstructions[t], x[{t,{}}])
+        local doutput_t = clones.criterion_rct[t]:backward(reconstructions[t], x[{{},t,{}}])
 
         prev_pool = pool_state[t]
         if t > 3 then
@@ -193,7 +193,7 @@ function feval(x)
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
-        local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, drnn_state[t])
+        local dlst = clones.rnn[t]:backward({x[{{},t,{}}], unpack(rnn_state[t-1])}, drnn_state[t])
 
         drnn_state[t-1] = {}
         for k,v in pairs(dlst) do
@@ -224,7 +224,6 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    feval(params)
     local _, loss = optim.rmsprop(feval, params, optim_state)
     local time = timer:time().real
 

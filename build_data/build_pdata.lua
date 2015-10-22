@@ -2,7 +2,6 @@ nexamples = 1024 -- SA1
 speaker = 'FCJF0'
 
 trainset = torch.Tensor(nexamples, cqt_features)
-
 testset = torch.Tensor(nexamples, cqt_features)
 
 data = matio.load('timit/TRAIN/DR1_%s.mat' % speaker)['data']
