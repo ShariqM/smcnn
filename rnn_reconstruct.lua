@@ -18,6 +18,7 @@ require 'nn'
 require 'nngraph'
 require 'optim'
 require 'lfs'
+require 'PairwiseBatchDistance'
 
 matio = require 'matio'
 matio.use_lua_strings = true
@@ -32,9 +33,10 @@ cmd:text()
 cmd:text('Options')
 -- data
 -- model params
-cmd:option('-rnn_size', 175, 'size of LSTM internal state')
+cmd:option('-rnn_size', 176, 'size of LSTM internal state')
 cmd:option('-num_layers', 3, 'number of layers in the LSTM')
-cmd:option('-model', 'lstm', 'lstm or rnn')
+cmd:option('-model', 'rnn', 'lstm or rnn')
+cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
 cmd:option('-learning_rate',2e-5,'learning rate')
@@ -85,11 +87,14 @@ dofile('build_data/build_pdata.lua')
 print('creating an ' .. opt.model .. ' with ' .. opt.num_layers .. ' layers')
 protos = {}
 if opt.model == 'lstm' then
-    protos.rnn = LSTM.lstm(cqt_features, opt.rnn_size, opt.num_layers, opt.dropout)
+    protos.rnn = LSTM.lstm(cqt_features, opt.rnn_size, opt.pool_size,
+                           opt.num_layers, opt.dropout)
 elseif opt.model == 'rnn' then
-    protos.rnn = RNN.rnn(cqt_features, opt.rnn_size, opt.num_layers, opt.dropout)
+    protos.rnn = RNN.rnn(cqt_features, opt.rnn_size, opt.pool_size,
+                         opt.num_layers, opt.dropout)
 end
-protos.criterion = nn.MSECriterion()
+protos.criterion_rct = nn.MSECriterion()
+protos.criterion_stb = nn.MSECriterion() -- L2 ok?
 
 -- the initial state of the cell/hidden states
 init_state = {}
@@ -136,7 +141,7 @@ for name,proto in pairs(protos) do
 end
 
 -- do fwd/bwd and return loss, grad_params
-local init_state_global = clone_list(init_state)
+local init_state_global = clone_list(init_state) -- Not sure why we need clone...
 function feval(x)
     if x ~= params then
         params:copy(x)
@@ -150,32 +155,45 @@ function feval(x)
 
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
+    local pool_state = {}
     local reconstructions = {}
     local loss = 0
-    local pools = {}
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
         local lst = clones.rnn[t]:forward{x[{t,{}}], unpack(rnn_state[t-1])}
+
         rnn_state[t] = {}
         for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
-        pools[#pools] = lst[#lst]
+
+        pool_state[t] = lst[#lst]
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
-        loss = loss + clones.criterion[t]:forward(reconstructions[t], x[{t,{}}])
+
+        loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{t,{}}])
+
+        prev_pool = pool_state[t]
+        if t > 3 then
+            prev_pool = pool_state[t-1]
+        end
+        loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
-    loss = loss / opt.seq_length
 
     ------------------ backward pass -------------------
     -- initialize gradient at time t to be zeros (there's no influence from future)
     local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
-        print (t)
-        local doutput_t = clones.criterion[t]:backward(reconstructions[t], x[{t,{}}])
+        local doutput_t = clones.criterion_rct[t]:backward(reconstructions[t], x[{t,{}}])
+
+        prev_pool = pool_state[t]
+        if t > 3 then
+            prev_pool = pool_state[t-1]
+        end
+        doutput2_t = clones.criterion_stb[t]:backward(prev_pool, pool_state[t])
+
         table.insert(drnn_state[t], doutput_t)
-        -- local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, pools[#pools], drnn_state[t])
+        table.insert(drnn_state[t], doutput2_t)
         local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, drnn_state[t])
-     dlstm_h[t] = clones.output[t]:backward(lstm_h[t], doutput_t)
 
         drnn_state[t-1] = {}
         for k,v in pairs(dlst) do
