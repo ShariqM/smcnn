@@ -88,16 +88,18 @@ function PairwiseBatchDistance:updateGradInput(input, gradOutput)
    else
       self.grad = self.grad or gradOutput.new()
       self.ones = self.ones or gradOutput.new()
-
       self.grad:resizeAs(input[1]):zero()
-      self.ones:resize(input[1]:size(3)):fill(1)
-      print ('go', gradOutput:size())
-      print ('grad', self.grad:size())
-      print ('ones', self.ones:size())
-      print ('gi', self.gradInput[1]:size())
-      debug.debug()
 
-      self.grad:addr(gradOutput, self.ones)
+      if input[1]:dim() == 3 then
+         self.ones:resize(input[1]:size(3)):fill(1)
+         -- Hacky 3d * 2d dot product since torch doesn't support this...
+         for i=1, self.grad:size()[1] do
+            self.grad[i]:addr(gradOutput[i], self.ones)
+         end
+      else
+         self.ones:resize(input[1]:size(2)):fill(1)
+         self.grad:addr(gradOutput, self.ones)
+      end
       self.gradInput[1]:cmul(self.grad)
    end
    self.gradInput[2]:zero():add(-1, self.gradInput[1])

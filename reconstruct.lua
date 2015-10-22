@@ -102,12 +102,14 @@ for i = 1, 100 do
     hinge_signal = torch.Tensor(x1_len):fill(toInt(x1_phn == x2_phn))
     -- print ('Compare', x1_phn, x2_phn, hinge_signal[1])
 
+
     print ('Start-Distance', snet:forward({x1_batch,x2_batch})[2])
     -- print ('Start-Distance', snet:forward({x1,x2})[2][1])
     for j = 1, iterations do
         gradUpdate(snet, {x1_batch,x2_batch}, {reconstruct_signal, hinge_signals}, hinge, mse, learningRate)
         -- gradUpdate(snet, {x1,x2}, {narrow_x1,hinge_signal}, hinge, mse, learningRate)
     end
+    print ('End-Distance', snet:forward({x1_batch,x2_batch})[2])
 
     -- print ('Start-Distance', snet:forward({x1,x2})[2][1])
     -- for j = 1, iterations do
