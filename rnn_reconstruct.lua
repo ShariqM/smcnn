@@ -33,17 +33,17 @@ cmd:text('Options')
 -- data
 -- model params
 cmd:option('-rnn_size', 175, 'size of LSTM internal state')
-cmd:option('-num_layers', 3, 'number of layers in the LSTM')
+cmd:option('-num_layers', 8, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'lstm or rnn')
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',2e-3,'learning rate')
+cmd:option('-learning_rate',2e-5,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',50,'number of sequences to train on in parallel')
+cmd:option('-batch_size',1,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',50,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
@@ -87,7 +87,7 @@ protos = {}
 if opt.model == 'lstm' then
     protos.rnn = LSTM.lstm(cqt_features, opt.rnn_size, opt.num_layers, opt.dropout)
 elseif opt.model == 'rnn' then
-    protos.rnn = RNN.rnn(vocab_size, opt.rnn_size, opt.num_layers, opt.dropout)
+    protos.rnn = RNN.rnn(cqt_features, opt.rnn_size, opt.num_layers, opt.dropout)
 end
 protos.criterion = nn.MSECriterion()
 
@@ -145,8 +145,8 @@ function feval(x)
 
     ------------------ get minibatch -------------------
     local start = torch.random(trainset:size()[1] - opt.seq_length)
-    x = trainset[{start,start+opt.seq_length}]
-    x = x:cuda() -- Ship to GPU | Need Float?
+    x = trainset[{{start,start+opt.seq_length}, {}}]
+    if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
 
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
@@ -155,11 +155,11 @@ function feval(x)
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
-        local lst = clones.rnn[t]:forward{x[t], unpack(rnn_state[t-1])}
+        local lst = clones.rnn[t]:forward{x[{t,{}}], unpack(rnn_state[t-1])}
         rnn_state[t] = {}
         for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
         reconstructions[t] = lst[#lst] -- last element is the prediction
-        loss = loss + clones.criterion[t]:forward(reconstructions[t], x[t])
+        loss = loss + clones.criterion[t]:forward(reconstructions[t], x[{t,{}}])
     end
     loss = loss / opt.seq_length
 
@@ -168,7 +168,7 @@ function feval(x)
     local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
-        local doutput_t = clones.criterion[t]:backward(reconstructions[t], x[t])
+        local doutput_t = clones.criterion[t]:backward(reconstructions[t], x[{t,{}}])
         table.insert(drnn_state[t], doutput_t)
         local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, drnn_state[t])
         drnn_state[t-1] = {}
@@ -200,6 +200,7 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
+    feval(params)
     local _, loss = optim.rmsprop(feval, params, optim_state)
     local time = timer:time().real
 
@@ -249,8 +250,6 @@ for i = 1, iterations do
     if loss0 == nil then loss0 = loss[1] end
     if loss[1] > loss0 * 3 then
         print('loss is exploding, aborting.')
-        break -- halt
+        -- break -- halt
     end
 end
-
-
