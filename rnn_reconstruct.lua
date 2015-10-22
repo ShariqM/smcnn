@@ -152,12 +152,14 @@ function feval(x)
     local rnn_state = {[0] = init_state_global}
     local reconstructions = {}
     local loss = 0
+    local pools = {}
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
         local lst = clones.rnn[t]:forward{x[{t,{}}], unpack(rnn_state[t-1])}
         rnn_state[t] = {}
         for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
+        pools[#pools] = lst[#lst]
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
         loss = loss + clones.criterion[t]:forward(reconstructions[t], x[{t,{}}])
     end
@@ -171,7 +173,10 @@ function feval(x)
         print (t)
         local doutput_t = clones.criterion[t]:backward(reconstructions[t], x[{t,{}}])
         table.insert(drnn_state[t], doutput_t)
+        -- local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, pools[#pools], drnn_state[t])
         local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, drnn_state[t])
+     dlstm_h[t] = clones.output[t]:backward(lstm_h[t], doutput_t)
+
         drnn_state[t-1] = {}
         for k,v in pairs(dlst) do
             if k > 1 then -- k == 1 is gradient on x, which we dont need
