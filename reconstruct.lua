@@ -94,7 +94,7 @@ for i = 1, 100 do
 
     idx_1 = math.random(1, #ts.all)
     x1, x1_phn, x1_speaker, x1_len = unpack(ts['all'][idx_1])
---
+
     idx_2 = ts.hs[x1_len][math.random(1, #ts.hs[x1_len])]
     x2, x2_phn, x2_speaker, x2_len = unpack(ts['all'][idx_2])
 

@@ -33,7 +33,7 @@ cmd:text('Options')
 -- data
 -- model params
 cmd:option('-rnn_size', 175, 'size of LSTM internal state')
-cmd:option('-num_layers', 8, 'number of layers in the LSTM')
+cmd:option('-num_layers', 3, 'number of layers in the LSTM')
 cmd:option('-model', 'lstm', 'lstm or rnn')
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
@@ -157,8 +157,8 @@ function feval(x)
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
         local lst = clones.rnn[t]:forward{x[{t,{}}], unpack(rnn_state[t-1])}
         rnn_state[t] = {}
-        for i=1,#init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
-        reconstructions[t] = lst[#lst] -- last element is the prediction
+        for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
+        reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
         loss = loss + clones.criterion[t]:forward(reconstructions[t], x[{t,{}}])
     end
     loss = loss / opt.seq_length
@@ -168,6 +168,7 @@ function feval(x)
     local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
+        print (t)
         local doutput_t = clones.criterion[t]:backward(reconstructions[t], x[{t,{}}])
         table.insert(drnn_state[t], doutput_t)
         local dlst = clones.rnn[t]:backward({x[t], unpack(rnn_state[t-1])}, drnn_state[t])
