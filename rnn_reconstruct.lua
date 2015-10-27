@@ -40,8 +40,8 @@ cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',1e-8,'learning rate')
-cmd:option('-learning_rate_decay',0.90,'learning rate decay')
+cmd:option('-learning_rate',1e-2,'learning rate')
+cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
@@ -58,7 +58,6 @@ cmd:option('-seed',123,'torch manual random number generator seed')
 cmd:option('-print_every',1,'how many steps/minibatches between printing out the loss')
 cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','lstm','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-accurate_gpu_timing',0,'set this flag to 1 to get precise timings when using GPU. Might make code bit slower but reports accurate timings.')
 -- GPU/CPU
 cmd:option('-type',       'double', 'type: double | float | cuda')
@@ -92,9 +91,10 @@ if string.len(opt.init_from) > 0 then
     protos = checkpoint.protos
 
     -- overwrite model settings based on checkpoint to ensure compatibility
-    print('overwriting rnn_size=' .. checkpoint.opt.rnn_size .. ', num_layers=' .. checkpoint.opt.num_layers .. ' based on the checkpoint.')
+    print('overwriting rnn_size=' .. checkpoint.opt.rnn_size .. ', num_layers=' .. checkpoint.opt.num_layers .. ', model=' .. checkpoint.opt.model .. ' based on the checkpoint.')
     opt.rnn_size = checkpoint.opt.rnn_size
     opt.num_layers = checkpoint.opt.num_layers
+    opt.model = checkpoint.opt.model
     do_random_init = false
 else
 
@@ -133,7 +133,7 @@ params, grad_params = model_utils.combine_all_parameters(protos.rnn)
 
 -- initialization
 if do_random_init then
-    params:uniform(-0.08, 0.08) -- small uniform numbers
+    params:uniform(-1e-5, 1e-5) -- small uniform numbers
     -- params:uniform(-1e-5, 1e-5)
 end
 
@@ -176,6 +176,9 @@ function feval(x)
     local pool_state = {}
     local reconstructions = {}
     local loss = 0
+    local orig_snr = 0
+    local tot_snr = 0
+    local msr = 0
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
@@ -190,26 +193,26 @@ function feval(x)
 
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
 
+        tot_snr = tot_snr -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
+        -- msr = msr + math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)
+
         prev_pool = pool_state[t]
         if t > 3 then
             prev_pool = pool_state[t-1]
         end
-        loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
+        -- loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
     -- print ('Mean Pool', pool_state[opt.seq_length]:mean(4):mean() / x[{{},opt.seq_length, {}}]:mean(1):mean())
-    t = opt.seq_length
+    if tot_snr ~= 0 then
+        print (string.format('Recons: %.2fdB | Orig: %.2fdB | Loss: %.2f', tot_snr / opt.seq_length, orig_snr / opt.seq_length, loss))
+    end
+    -- print (string.format('Recons: %.2fdB | Msr: %.4f | Loss: %.2f', tot_snr / opt.seq_length, msr, loss))
+
     -- reconstructions[t]:fill(0)
     -- reconstructions[t]:fill(1e-8)
     -- reconstructions[t] = reconstructions[t] + x[{{},t,{}}]
     -- print (reconstructions[t][1]:size())
-    -- print (
-    -- r = reconstructions[t][1]
-    -- o = x[{{},t,{}}][1]
-    -- print (string.format('%s: %.2fdB', 'Recons:', -10 * math.log10(math.pow((o - r):norm(), 2) / (math.pow(o:norm(), 2)))))
-    -- r = reconstructions[t][opt.batch_size]
-    -- o = x[{{},t,{}}][opt.batch_size]
-    -- print (string.format('%s: %.2fdB', 'Recons:', -10 * math.log10(math.pow((o - r):norm(), 2) / (math.pow(o:norm(), 2)))))
-    print (string.format('%s: %.2fdB', 'Recons:', -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))))
+
     -- print ('SNR Recons:', -10 * math.log10(((x[{{},t,{}}] - reconstructions[t]):norm())/(x[{{},t,{}}]:norm())))
 
     ------------------ backward pass -------------------
@@ -241,7 +244,7 @@ function feval(x)
     end
     ------------------------ misc ----------------------
     -- transfer final state to initial state (BPTT)
-    init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
+    -- init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
     -- grad_params:div(opt.seq_length) -- this line should be here but since we use rmsprop it would have no effect. Removing for efficiency
     -- clip gradient element-wise
     grad_params:clamp(-opt.grad_clip, opt.grad_clip)
@@ -259,7 +262,8 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    local _, loss = optim.rmsprop(feval, params, optim_state)
+    -- local _, loss = optim.rmsprop(feval, params, optim_state)
+    local _, loss = optim.adagrad(feval, params, optim_state)
     local time = timer:time().real
 
     local train_loss = loss[1] -- the loss is inside a list, pop it
@@ -276,7 +280,7 @@ for i = 1, iterations do
 
     -- every now and then or on last iteration
     if (i % opt.save_every == 0 or i == iterations) then
-        local savefile = string.format('%s/lm_%s_epoch%.2f.t7', opt.checkpoint_dir, opt.savefile, epoch)
+        local savefile = string.format('%s/%s_epoch%.2f.t7', opt.checkpoint_dir, opt.model, epoch)
         print('saving checkpoint to ' .. savefile)
         local checkpoint = {}
         checkpoint.protos = protos
@@ -299,8 +303,8 @@ for i = 1, iterations do
         break -- halt
     end
     if loss0 == nil then loss0 = loss[1] end
-    if loss[1] > loss0 * 3 then
-        print('loss is exploding, aborting.')
+    -- if loss[1] > loss0 * 3 then
+        -- print('loss is exploding, aborting.')
         -- break -- halt
-    end
+    -- end
 end

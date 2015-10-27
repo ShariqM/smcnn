@@ -53,4 +53,3 @@ function RNN.rnn(input_size, rnn_size, pool_size, n, dropout)
 end
 
 return RNN
-

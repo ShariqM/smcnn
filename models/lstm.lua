@@ -1,5 +1,5 @@
-
 local LSTM = {}
+
 function LSTM.lstm(input_size, rnn_size, pool_size, n, dropout)
   dropout = dropout or 0
 
@@ -13,6 +13,7 @@ function LSTM.lstm(input_size, rnn_size, pool_size, n, dropout)
 
   local x, input_size_L
   local outputs = {}
+  local pool
   for L = 1,n do
     -- c,h from previos timesteps
     local prev_h = inputs[L*2+1]
@@ -48,6 +49,13 @@ function LSTM.lstm(input_size, rnn_size, pool_size, n, dropout)
     -- gated cells form the output
     local next_h = nn.CMulTable()({out_gate, nn.Tanh()(next_c)})
 
+    if L == math.floor((n-1)/2) then -- Middle Layer
+      -- prev_pool = inputs[#inputs]
+      reshape_h = nn.Reshape(1,1,rnn_size)(next_h)
+      pool      = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_h)
+      -- stability = nn.PairwiseBatchDistance(1)({prev_pool, pool})
+    end
+
     table.insert(outputs, next_c)
     table.insert(outputs, next_h)
   end
@@ -57,6 +65,8 @@ function LSTM.lstm(input_size, rnn_size, pool_size, n, dropout)
   if dropout > 0 then top_h = nn.Dropout(dropout)(top_h) end
   local x_hat = nn.Linear(rnn_size, input_size)(top_h):annotate{name='decoder'}
   table.insert(outputs, x_hat)
+
+  table.insert(outputs, pool)
 
   return nn.gModule(inputs, outputs)
 end

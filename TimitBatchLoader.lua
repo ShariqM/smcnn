@@ -59,6 +59,7 @@ function TimitBatchLoader:next_batch()
         self.x_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length, self.cqt_features)
         for i=1,self.batch_size do
             local idx = torch.random(self.num_examples)
+            idx = 1
             split = data[{idx,{},{1,self.tlength}}]:split(self.seq_length,2)
             for k=1,20 do
                 self.x_batches[{k, i, {}, {}}] = split[k]
@@ -69,7 +70,9 @@ function TimitBatchLoader:next_batch()
     self.evaluated_batches = self.evaluated_batches + 1
     self.current_batch = (self.current_batch+1)
     self.current_batch = 1
-    return self.x_batches[{self.current_batch,{},{},{}}]
+
+    -- print (self.x_batches[{self.current_batch,{},{},{}}]:mean()) -- 0.00039700941962218
+    return self.x_batches[{self.current_batch,{},{},{}}] / (self.x_batches[{self.current_batch,{},{},{}}]:mean())
 end
 
 return TimitBatchLoader
