@@ -200,7 +200,7 @@ function feval(x)
         if t > 3 then
             prev_pool = pool_state[t-1]
         end
-        -- loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
+        loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
     -- print ('Mean Pool', pool_state[opt.seq_length]:mean(4):mean() / x[{{},opt.seq_length, {}}]:mean(1):mean())
     if tot_snr ~= 0 then
@@ -227,7 +227,7 @@ function feval(x)
             prev_pool = pool_state[t-1]
         end
         doutput2_t = clones.criterion_stb[t]:backward(prev_pool, pool_state[t])
-        doutput2_t:fill(0) -- FIXME No Influence for now
+        -- doutput2_t:fill(0) -- FIXME No Influence for now
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
