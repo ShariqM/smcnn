@@ -40,13 +40,13 @@ cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',2e-5,'learning rate')
-cmd:option('-learning_rate_decay',0.97,'learning rate decay')
+cmd:option('-learning_rate',1e-8,'learning rate')
+cmd:option('-learning_rate_decay',0.90,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',10,'number of sequences to train on in parallel')
+cmd:option('-batch_size',1,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',50,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
@@ -56,7 +56,7 @@ cmd:option('-init_from', '', 'initialize network parameters from checkpoint at t
 -- bookkeeping
 cmd:option('-seed',123,'torch manual random number generator seed')
 cmd:option('-print_every',1,'how many steps/minibatches between printing out the loss')
-cmd:option('-eval_val_every',1000,'every how many iterations should we evaluate on validation data?')
+cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-savefile','lstm','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 cmd:option('-accurate_gpu_timing',0,'set this flag to 1 to get precise timings when using GPU. Might make code bit slower but reports accurate timings.')
@@ -78,24 +78,38 @@ if opt.type == 'float' then
 elseif opt.type == 'cuda' then
     print('==> switching to CUDA')
     require 'cunn'
-    torch.setdefaulttensortype('torch.CudaTensor') -- FIXME?
+    torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
 -- Load the Training and Test Set
 cqt_features = 175
 local loader = TimitBatchLoader.create(cqt_features, opt.batch_size, opt.seq_length)
 
-print('creating an ' .. opt.model .. ' with ' .. opt.num_layers .. ' layers')
-protos = {}
-if opt.model == 'lstm' then
-    protos.rnn = LSTM.lstm(cqt_features, opt.rnn_size, opt.pool_size,
-                           opt.num_layers, opt.dropout)
-elseif opt.model == 'rnn' then
-    protos.rnn = RNN.rnn(cqt_features, opt.rnn_size, opt.pool_size,
-                         opt.num_layers, opt.dropout)
+local do_random_init = true
+if string.len(opt.init_from) > 0 then
+    print('loading an Network from checkpoint ' .. opt.init_from)
+    local checkpoint = torch.load(opt.init_from)
+    protos = checkpoint.protos
+
+    -- overwrite model settings based on checkpoint to ensure compatibility
+    print('overwriting rnn_size=' .. checkpoint.opt.rnn_size .. ', num_layers=' .. checkpoint.opt.num_layers .. ' based on the checkpoint.')
+    opt.rnn_size = checkpoint.opt.rnn_size
+    opt.num_layers = checkpoint.opt.num_layers
+    do_random_init = false
+else
+
+    print('creating an ' .. opt.model .. ' with ' .. opt.num_layers .. ' layers')
+    protos = {}
+    if opt.model == 'lstm' then
+        protos.rnn = LSTM.lstm(cqt_features, opt.rnn_size, opt.pool_size,
+                               opt.num_layers, opt.dropout)
+    elseif opt.model == 'rnn' then
+        protos.rnn = RNN.rnn(cqt_features, opt.rnn_size, opt.pool_size,
+                             opt.num_layers, opt.dropout)
+    end
+    protos.criterion_rct = nn.MSECriterion()
+    protos.criterion_stb = nn.MSECriterion() -- L2 ok?
 end
-protos.criterion_rct = nn.MSECriterion()
-protos.criterion_stb = nn.MSECriterion() -- L2 ok?
 
 -- the initial state of the cell/hidden states
 init_state = {}
@@ -118,7 +132,11 @@ end
 params, grad_params = model_utils.combine_all_parameters(protos.rnn)
 
 -- initialization
-params:uniform(-0.08, 0.08) -- small uniform numbers
+if do_random_init then
+    params:uniform(-0.08, 0.08) -- small uniform numbers
+    -- params:uniform(-1e-5, 1e-5)
+end
+
 
 -- initialize the LSTM forget gates with slightly higher biases to encourage remembering in the beginning
 if opt.model == 'lstm' then
@@ -167,6 +185,7 @@ function feval(x)
         for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
 
         pool_state[t] = lst[#lst]
+        -- print (pool_state[t]:size())
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
 
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
@@ -177,6 +196,21 @@ function feval(x)
         end
         loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
+    -- print ('Mean Pool', pool_state[opt.seq_length]:mean(4):mean() / x[{{},opt.seq_length, {}}]:mean(1):mean())
+    t = opt.seq_length
+    -- reconstructions[t]:fill(0)
+    -- reconstructions[t]:fill(1e-8)
+    -- reconstructions[t] = reconstructions[t] + x[{{},t,{}}]
+    -- print (reconstructions[t][1]:size())
+    -- print (
+    -- r = reconstructions[t][1]
+    -- o = x[{{},t,{}}][1]
+    -- print (string.format('%s: %.2fdB', 'Recons:', -10 * math.log10(math.pow((o - r):norm(), 2) / (math.pow(o:norm(), 2)))))
+    -- r = reconstructions[t][opt.batch_size]
+    -- o = x[{{},t,{}}][opt.batch_size]
+    -- print (string.format('%s: %.2fdB', 'Recons:', -10 * math.log10(math.pow((o - r):norm(), 2) / (math.pow(o:norm(), 2)))))
+    print (string.format('%s: %.2fdB', 'Recons:', -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))))
+    -- print ('SNR Recons:', -10 * math.log10(((x[{{},t,{}}] - reconstructions[t]):norm())/(x[{{},t,{}}]:norm())))
 
     ------------------ backward pass -------------------
     -- initialize gradient at time t to be zeros (there's no influence from future)
@@ -190,6 +224,7 @@ function feval(x)
             prev_pool = pool_state[t-1]
         end
         doutput2_t = clones.criterion_stb[t]:backward(prev_pool, pool_state[t])
+        doutput2_t:fill(0) -- FIXME No Influence for now
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
@@ -240,22 +275,15 @@ for i = 1, iterations do
     end
 
     -- every now and then or on last iteration
-    if false and (i % opt.eval_val_every == 0 or i == iterations) then
-        -- evaluate loss on validation data
-        local val_loss = eval_split(2) -- 2 = validation
-        val_losses[i] = val_loss
-
-        local savefile = string.format('%s/lm_%s_epoch%.2f_%.4f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
+    if (i % opt.save_every == 0 or i == iterations) then
+        local savefile = string.format('%s/lm_%s_epoch%.2f.t7', opt.checkpoint_dir, opt.savefile, epoch)
         print('saving checkpoint to ' .. savefile)
         local checkpoint = {}
         checkpoint.protos = protos
         checkpoint.opt = opt
         checkpoint.train_losses = train_losses
-        checkpoint.val_loss = val_loss
-        checkpoint.val_losses = val_losses
         checkpoint.i = i
         checkpoint.epoch = epoch
-        checkpoint.vocab = loader.vocab_mapping
         torch.save(savefile, checkpoint)
     end
 
