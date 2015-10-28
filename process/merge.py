@@ -16,7 +16,11 @@ for fname in fnames:
         c = b['X'][0][0]
         result[i][:][:] = c[:,(j*1024):(j+1)*1024].T
         i = i + 1
-        if i > 0 and (i % 1000 == 0 or i == nexamples):
-            io.savemat('timit/TRAIN/%d.mat' % i, {'X':result})
+        if i % 100 == 0:
+            print i
+        if i == nexamples:
+            print 'start save'
+            io.savemat('timit/TRAIN/process/%d.mat' % i, {'X':result})
             print 'saved at %d' % i
+            sys.exit(0)
 

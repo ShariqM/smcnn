@@ -41,14 +41,14 @@ cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',1e-3,'learning rate')
+cmd:option('-learning_rate',2e-4,'learning rate')
 -- cmd:option('-learning_rate',1e-6,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',10,'number of sequences to train on in parallel')
+cmd:option('-batch_size',50,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',50,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
@@ -161,7 +161,6 @@ for name,proto in pairs(protos) do
 end
 
 -- do fwd/bwd and return loss, grad_params
-local init_state_global = clone_list(init_state) -- Not sure why we need clone...
 local tot_snr = 0
 function feval(x)
     if x ~= params then
@@ -170,8 +169,9 @@ function feval(x)
     grad_params:zero()
 
     ------------------ get minibatch -------------------
-    x = loader:next_batch()
+    x, is_new_batch = loader:next_batch()
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
+    if is_new_batch then init_state_global = clone_list(init_state) end -- Reset hidden state
 
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
@@ -189,21 +189,18 @@ function feval(x)
 
         pool_state[t] = lst[#lst]
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
+        -- print ('X norm', x[{{},t,{}}]:norm())
+        -- print ('Pool norm', pool_state[t]:norm())
 
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
         tot_snr = tot_snr -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
-        -- snr2 = snr2 -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
 
         prev_pool = pool_state[t]
         if t > 3 then
             prev_pool = pool_state[t-1]
         end
-        -- loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
+        loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
-    -- print ('Mean Pool', pool_state[opt.seq_length]:mean(4):mean() / x[{{},opt.seq_length, {}}]:mean(1):mean())
-    -- if snr2 ~= 0 then
-        -- print (string.format('Recons: %.2fdB | Loss: %.2f', snr2 / opt.seq_length, loss))
-    -- end
 
     ------------------ backward pass -------------------
     -- initialize gradient at time t to be zeros (there's no influence from future)
@@ -217,7 +214,7 @@ function feval(x)
             prev_pool = pool_state[t-1]
         end
         doutput2_t = clones.criterion_stb[t]:backward(prev_pool, pool_state[t])
-        doutput2_t:fill(0) -- FIXME No Influence for now
+        -- doutput2_t:fill(0) -- FIXME No Influence for now
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
@@ -257,22 +254,11 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    -- local _, loss = optim.rmsprop(feval, params, optim_state)
-    -- local _, loss = optim.adagrad(feval, params, optim_state)
-    local _, loss = optim.sgd(feval, params, optim_state) -- Works better for some reason
+    local _, loss = optim.sgd(feval, params, optim_state) -- Works better than adagrad or rmsprop
     local time = timer:time().real
 
     seq_loss = seq_loss + loss[1]
-    if i % 20 == 0 then
-        -- local i2h_params, grads = i2h.data.module:parameters()
-        -- local h2h_params, grads = h2h.data.module:parameters()
-        -- local h2o_params, grads = h2o.data.module:parameters()
-
-        -- print (string.format('I2H: %f, H2h: %f, H2O: %f', i2h_params[1]:norm(), h2h_params[1]:norm(), h2o_params[1]:norm()))
-        init_state_global = clone_list(init_state) -- Not sure why we need clone...
-        -- print (string.format("Resetting hidden state, %.4fs", time))
-    end
-    if i % 40 == 0 then
+    if i % 80 == 0 then
         print (string.format("Loss: %.3f SNR: %.2fdB", seq_loss, (tot_snr/(j * opt.seq_length))))
         seq_loss =  0
         tot_snr = 0

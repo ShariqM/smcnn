@@ -12,14 +12,15 @@ function TimitBatchLoader.create(cqt_features, batch_size, seq_length)
     batches = math.floor(1024/seq_length)
     tlength = batches * seq_length -- Cut off the rest
 
-    self.num_examples = 1000
+    self.num_examples = 1000 -- 2000 is broken (matio's fault I think)
     self.batches = batches
     self.tlength = tlength
     self.cqt_features = cqt_features
     self.batch_size = batch_size
     self.seq_length = seq_length
 
-    data = matio.load(string.format('timit/TRAIN/%d.mat', self.num_examples))['X']
+    data = matio.load(string.format('timit/TRAIN/process/%d.mat', self.num_examples))['X']
+    print (data:size())
     data = data / data:mean() -- Training does not work without this.
 
     self.data = data
@@ -32,7 +33,9 @@ function TimitBatchLoader.create(cqt_features, batch_size, seq_length)
 end
 
 function TimitBatchLoader:next_batch()
+    is_new_batch = false
     if self.current_batch == 0 or self.current_batch == 20 then
+        is_new_batch = true
         self.current_batch = 0
         self.x_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length, self.cqt_features)
         for i=1,self.batch_size do
@@ -47,7 +50,7 @@ function TimitBatchLoader:next_batch()
     self.current_batch = (self.current_batch+1)
     -- self.current_batch = 1
 
-    return self.x_batches[{self.current_batch,{},{},{}}]
+    return self.x_batches[{self.current_batch,{},{},{}}], is_new_batch
 end
 
 return TimitBatchLoader

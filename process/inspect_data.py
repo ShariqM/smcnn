@@ -4,12 +4,21 @@ import pdb
 
 def get_data(name):
     direc = 'timit/TRAIN/'
+    data = scipy.io.loadmat(direc + name + '.mat')
+    pdb.set_trace()
     data = scipy.io.loadmat(direc + name + '.mat')['data'][0][0][0]
     return data
+
+name = 'process/2000'
+data = get_data(name)
+print data.shape
+
+pdb.set_trace()
 
 name = 'DR1_FCJF0'
 data = get_data(name)
 print data.shape
+
 
 name = 'DR1_FDAW0'
 data2 = get_data(name)
