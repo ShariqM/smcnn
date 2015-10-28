@@ -99,7 +99,6 @@ if string.len(opt.init_from) > 0 then
     opt.model = checkpoint.opt.model
     do_random_init = false
 else
-
     print('creating an ' .. opt.model .. ' with ' .. opt.num_layers .. ' layers')
     protos = {}
     if opt.model == 'lstm' then
@@ -163,6 +162,7 @@ end
 
 -- do fwd/bwd and return loss, grad_params
 local init_state_global = clone_list(init_state) -- Not sure why we need clone...
+local tot_snr = 0
 function feval(x)
     if x ~= params then
         params:copy(x)
@@ -178,8 +178,7 @@ function feval(x)
     local pool_state = {}
     local reconstructions = {}
     local loss = 0
-    local tot_snr = 0
-    local msr = 0
+    local snr2 = 0
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
@@ -189,14 +188,11 @@ function feval(x)
         for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
 
         pool_state[t] = lst[#lst]
-        -- print (pool_state[t]:size())
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
-        -- reconstructions[t] = lst[#lst - 1]:fill(0)
 
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
-
         tot_snr = tot_snr -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
-        -- msr = msr + math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)
+        -- snr2 = snr2 -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
 
         prev_pool = pool_state[t]
         if t > 3 then
@@ -205,18 +201,9 @@ function feval(x)
         -- loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
     -- print ('Mean Pool', pool_state[opt.seq_length]:mean(4):mean() / x[{{},opt.seq_length, {}}]:mean(1):mean())
-    -- if tot_snr ~= 0 then
-        -- print (string.format('Recons: %.2fdB | Loss: %.2f', tot_snr / opt.seq_length, loss))
+    -- if snr2 ~= 0 then
+        -- print (string.format('Recons: %.2fdB | Loss: %.2f', snr2 / opt.seq_length, loss))
     -- end
-    -- debug.debug()
-    -- print (string.format('Recons: %.2fdB | Msr: %.4f | Loss: %.2f', tot_snr / opt.seq_length, msr, loss))
-
-    -- reconstructions[t]:fill(0)
-    -- reconstructions[t]:fill(1e-8)
-    -- reconstructions[t] = reconstructions[t] + x[{{},t,{}}]
-    -- print (reconstructions[t][1]:size())
-
-    -- print ('SNR Recons:', -10 * math.log10(((x[{{},t,{}}] - reconstructions[t]):norm())/(x[{{},t,{}}]:norm())))
 
     ------------------ backward pass -------------------
     -- initialize gradient at time t to be zeros (there's no influence from future)
@@ -264,28 +251,32 @@ local iterations = opt.max_epochs * opt.iters
 local iterations_per_epoch = opt.iters
 local loss0 = nil
 local seq_loss = 0
+local j = 0
 for i = 1, iterations do
+    j = j + 1
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
     -- local _, loss = optim.rmsprop(feval, params, optim_state)
     -- local _, loss = optim.adagrad(feval, params, optim_state)
-    local _, loss = optim.sgd(feval, params, optim_state)
+    local _, loss = optim.sgd(feval, params, optim_state) -- Works better for some reason
     local time = timer:time().real
 
     seq_loss = seq_loss + loss[1]
     if i % 20 == 0 then
-        local i2h_params, grads = i2h.data.module:parameters()
-        local h2h_params, grads = h2h.data.module:parameters()
-        local h2o_params, grads = h2o.data.module:parameters()
+        -- local i2h_params, grads = i2h.data.module:parameters()
+        -- local h2h_params, grads = h2h.data.module:parameters()
+        -- local h2o_params, grads = h2o.data.module:parameters()
 
-        print (string.format('I2H: %f, H2h: %f, H2O: %f', i2h_params[1]:norm(), h2h_params[1]:norm(), h2o_params[1]:norm()))
+        -- print (string.format('I2H: %f, H2h: %f, H2O: %f', i2h_params[1]:norm(), h2h_params[1]:norm(), h2o_params[1]:norm()))
         init_state_global = clone_list(init_state) -- Not sure why we need clone...
-        print (string.format("Resetting hidden state, %.4fs", time))
+        -- print (string.format("Resetting hidden state, %.4fs", time))
     end
-    if i % 200 == 0 then
-        print (string.format("Loss: %.3f", seq_loss))
+    if i % 40 == 0 then
+        print (string.format("Loss: %.3f SNR: %.2fdB", seq_loss, (tot_snr/(j * opt.seq_length))))
         seq_loss =  0
+        tot_snr = 0
+        j = 0
     end
 
     local train_loss = loss[1] -- the loss is inside a list, pop it

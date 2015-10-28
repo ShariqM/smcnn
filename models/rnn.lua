@@ -8,12 +8,11 @@ function RNN.rnn(input_size, rnn_size, pool_size, n, dropout)
   for L = 1,n do
     table.insert(inputs, nn.Identity()()) -- prev_h[L]
   end
-  -- table.insert(inputs, nn.Identity()()) -- prev_lh
 
   local x, input_size_L
   local outputs = {}
-  -- local stability
   local pool
+  local identity_hack = false
   for L = 1,n do
 
     local prev_h = inputs[L+1]
@@ -30,26 +29,25 @@ function RNN.rnn(input_size, rnn_size, pool_size, n, dropout)
     i2h = nn.Linear(input_size_L, rnn_size)(x)
     h2h = nn.Linear(rnn_size, rnn_size)(prev_h)
 
-    local params, grads = i2h.data.module:parameters()
-    params[1]:set(torch.eye(rnn_size))
-    params[2]:set(torch.zeros(rnn_size))
+    local next_h
+    if identity_hack then
+        local params, grads = i2h.data.module:parameters()
+        params[1]:set(torch.eye(rnn_size))
+        params[2]:set(torch.zeros(rnn_size))
 
+        params, grads = h2h.data.module:parameters()
+        params[1]:set(torch.zeros(rnn_size, rnn_size))
+        params[2]:set(torch.zeros(rnn_size))
+        next_h = nn.CAddTable(){i2h, h2h}
+    else
+        -- local next_h = nn.Tanh()(nn.CAddTable(){i2h, h2h})
+        next_h = nn.ReLU()(nn.CAddTable(){i2h, h2h})
+    end
 
-    local params, grads = h2h.data.module:parameters()
-    params[1]:set(torch.zeros(rnn_size, rnn_size))
-    params[2]:set(torch.zeros(rnn_size))
-
-    print ('norm', params[1]:norm())
-
-    -- local next_h = nn.Tanh()(nn.CAddTable(){i2h, h2h})
-    -- local next_h = nn.ReLU()(nn.CAddTable(){i2h, h2h})
-    local next_h = nn.CAddTable(){i2h, h2h}
     -- if L == math.floor((n-1)/2) then -- Middle Layer
     if L == 1 then
-      -- prev_pool = inputs[#inputs]
       reshape_h = nn.Reshape(1,1,rnn_size)(next_h)
       pool      = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_h)
-      -- stability = nn.PairwiseBatchDistance(1)({prev_pool, pool})
     end
 
     table.insert(outputs, next_h)
@@ -58,16 +56,17 @@ function RNN.rnn(input_size, rnn_size, pool_size, n, dropout)
   -- set up the decoder
   local top_h = outputs[#outputs]
   if dropout > 0 then top_h = nn.Dropout(dropout)(top_h) end
-  -- local x_hat = nn.Linear(rnn_size, input_size)(top_h)
+
   local h2o = nn.NormLinear(rnn_size, input_size)(top_h)
   table.insert(outputs, h2o)
 
-  local params, grads = h2o.data.module:parameters()
-  params[1]:set(torch.eye(rnn_size))
-  params[2]:set(torch.zeros(rnn_size))
+  if identity_hack then
+      local params, grads = h2o.data.module:parameters()
+      params[1]:set(torch.eye(rnn_size))
+      params[2]:set(torch.zeros(rnn_size))
+  end
 
-  -- table.insert(outputs, stability)
-  table.insert(outputs, pool)
+  table.insert(outputs, pool) -- Last ouput
 
   return {nn.gModule(inputs, outputs), i2h, h2h, h2o}
 end
