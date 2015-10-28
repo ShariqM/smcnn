@@ -20,6 +20,7 @@ require 'optim'
 require 'lfs'
 require 'PairwiseBatchDistance'
 require 'NormLinear'
+require 'gnuplot'
 
 matio = require 'matio'
 matio.use_lua_strings = true
@@ -35,13 +36,13 @@ cmd:text()
 cmd:text('Options')
 -- data
 -- model params
-cmd:option('-rnn_size', 175, 'size of LSTM internal state')
+cmd:option('-rnn_size', 176, 'size of LSTM internal state')
 cmd:option('-num_layers', 1, 'number of layers in the LSTM')
 cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',2e-4,'learning rate')
+cmd:option('-learning_rate',1e-5,'learning rate')
 -- cmd:option('-learning_rate',1e-6,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
@@ -160,8 +161,9 @@ for name,proto in pairs(protos) do
     clones[name] = model_utils.clone_T_times(proto, opt.seq_length, not proto.parameters)
 end
 
--- do fwd/bwd and return loss, grad_params
 local tot_snr = 0
+local pool_state = {}
+-- do fwd/bwd and return loss, grad_params
 function feval(x)
     if x ~= params then
         params:copy(x)
@@ -175,7 +177,6 @@ function feval(x)
 
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
-    local pool_state = {}
     local reconstructions = {}
     local loss = 0
     local snr2 = 0
@@ -249,6 +250,19 @@ local iterations_per_epoch = opt.iters
 local loss0 = nil
 local seq_loss = 0
 local j = 0
+
+function pool_plot()
+     dist = torch.Tensor(opt.seq_length)
+    for i=1,opt.seq_length do
+        dist[i] = (pool_state[i] - pool_state[1]):norm()
+    end
+    gnuplot.title('Norm of Pool state X_t vs Pool State X_1')
+    gnuplot.xlabel('Time (t)')
+    gnuplot.ylabel('Norm')
+    gnuplot.axis({1, opt.seq_length, 1, 1000})
+    gnuplot.plot(dist)
+end
+
 for i = 1, iterations do
     j = j + 1
     local epoch = i / iterations_per_epoch
@@ -257,12 +271,15 @@ for i = 1, iterations do
     local _, loss = optim.sgd(feval, params, optim_state) -- Works better than adagrad or rmsprop
     local time = timer:time().real
 
+    pool_plot()
+
     seq_loss = seq_loss + loss[1]
     if i % 80 == 0 then
         print (string.format("Loss: %.3f SNR: %.2fdB", seq_loss, (tot_snr/(j * opt.seq_length))))
         seq_loss =  0
         tot_snr = 0
         j = 0
+
     end
 
     local train_loss = loss[1] -- the loss is inside a list, pop it
