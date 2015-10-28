@@ -19,6 +19,7 @@ require 'nngraph'
 require 'optim'
 require 'lfs'
 require 'PairwiseBatchDistance'
+require 'NormLinear'
 
 matio = require 'matio'
 matio.use_lua_strings = true
@@ -34,19 +35,20 @@ cmd:text()
 cmd:text('Options')
 -- data
 -- model params
-cmd:option('-rnn_size', 176, 'size of LSTM internal state')
-cmd:option('-num_layers', 3, 'number of layers in the LSTM')
+cmd:option('-rnn_size', 175, 'size of LSTM internal state')
+cmd:option('-num_layers', 1, 'number of layers in the LSTM')
 cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',1e-2,'learning rate')
+cmd:option('-learning_rate',1e-3,'learning rate')
+-- cmd:option('-learning_rate',1e-6,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',1,'number of sequences to train on in parallel')
+cmd:option('-batch_size',10,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',50,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
@@ -84,7 +86,7 @@ end
 cqt_features = 175
 local loader = TimitBatchLoader.create(cqt_features, opt.batch_size, opt.seq_length)
 
-local do_random_init = true
+local do_random_init = false
 if string.len(opt.init_from) > 0 then
     print('loading an Network from checkpoint ' .. opt.init_from)
     local checkpoint = torch.load(opt.init_from)
@@ -104,8 +106,8 @@ else
         protos.rnn = LSTM.lstm(cqt_features, opt.rnn_size, opt.pool_size,
                                opt.num_layers, opt.dropout)
     elseif opt.model == 'rnn' then
-        protos.rnn = RNN.rnn(cqt_features, opt.rnn_size, opt.pool_size,
-                             opt.num_layers, opt.dropout)
+        protos.rnn, i2h, h2h, h2o  = unpack(RNN.rnn(cqt_features, opt.rnn_size, opt.pool_size,
+                             opt.num_layers, opt.dropout))
     end
     protos.criterion_rct = nn.MSECriterion()
     protos.criterion_stb = nn.MSECriterion() -- L2 ok?
@@ -176,7 +178,6 @@ function feval(x)
     local pool_state = {}
     local reconstructions = {}
     local loss = 0
-    local orig_snr = 0
     local tot_snr = 0
     local msr = 0
 
@@ -190,6 +191,7 @@ function feval(x)
         pool_state[t] = lst[#lst]
         -- print (pool_state[t]:size())
         reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
+        -- reconstructions[t] = lst[#lst - 1]:fill(0)
 
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
 
@@ -203,9 +205,10 @@ function feval(x)
         -- loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
     end
     -- print ('Mean Pool', pool_state[opt.seq_length]:mean(4):mean() / x[{{},opt.seq_length, {}}]:mean(1):mean())
-    if tot_snr ~= 0 then
-        print (string.format('Recons: %.2fdB | Orig: %.2fdB | Loss: %.2f', tot_snr / opt.seq_length, orig_snr / opt.seq_length, loss))
-    end
+    -- if tot_snr ~= 0 then
+        -- print (string.format('Recons: %.2fdB | Loss: %.2f', tot_snr / opt.seq_length, loss))
+    -- end
+    -- debug.debug()
     -- print (string.format('Recons: %.2fdB | Msr: %.4f | Loss: %.2f', tot_snr / opt.seq_length, msr, loss))
 
     -- reconstructions[t]:fill(0)
@@ -244,7 +247,9 @@ function feval(x)
     end
     ------------------------ misc ----------------------
     -- transfer final state to initial state (BPTT)
-    -- init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
+
+    init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
+
     -- grad_params:div(opt.seq_length) -- this line should be here but since we use rmsprop it would have no effect. Removing for efficiency
     -- clip gradient element-wise
     grad_params:clamp(-opt.grad_clip, opt.grad_clip)
@@ -258,13 +263,30 @@ local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
 local iterations = opt.max_epochs * opt.iters
 local iterations_per_epoch = opt.iters
 local loss0 = nil
+local seq_loss = 0
 for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
     -- local _, loss = optim.rmsprop(feval, params, optim_state)
-    local _, loss = optim.adagrad(feval, params, optim_state)
+    -- local _, loss = optim.adagrad(feval, params, optim_state)
+    local _, loss = optim.sgd(feval, params, optim_state)
     local time = timer:time().real
+
+    seq_loss = seq_loss + loss[1]
+    if i % 20 == 0 then
+        local i2h_params, grads = i2h.data.module:parameters()
+        local h2h_params, grads = h2h.data.module:parameters()
+        local h2o_params, grads = h2o.data.module:parameters()
+
+        print (string.format('I2H: %f, H2h: %f, H2O: %f', i2h_params[1]:norm(), h2h_params[1]:norm(), h2o_params[1]:norm()))
+        init_state_global = clone_list(init_state) -- Not sure why we need clone...
+        print (string.format("Resetting hidden state, %.4fs", time))
+    end
+    if i % 200 == 0 then
+        print (string.format("Loss: %.3f", seq_loss))
+        seq_loss =  0
+    end
 
     local train_loss = loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
@@ -291,7 +313,7 @@ for i = 1, iterations do
         torch.save(savefile, checkpoint)
     end
 
-    if i % opt.print_every == 0 then
+    if false and i % opt.print_every == 0 then
         print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
     end
 

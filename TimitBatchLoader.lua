@@ -34,6 +34,7 @@ function TimitBatchLoader.create(cqt_features, batch_size, seq_length)
         -- if count == 100:
     -- end
     data = matio.load('timit/TRAIN/200.mat')['X']
+    data = data / data:mean() -- Training does not work without this.
     print (data:size())
 
     self.data = data
@@ -59,7 +60,7 @@ function TimitBatchLoader:next_batch()
         self.x_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length, self.cqt_features)
         for i=1,self.batch_size do
             local idx = torch.random(self.num_examples)
-            idx = 1
+            -- idx = i
             split = data[{idx,{},{1,self.tlength}}]:split(self.seq_length,2)
             for k=1,20 do
                 self.x_batches[{k, i, {}, {}}] = split[k]
@@ -69,10 +70,11 @@ function TimitBatchLoader:next_batch()
     end
     self.evaluated_batches = self.evaluated_batches + 1
     self.current_batch = (self.current_batch+1)
-    self.current_batch = 1
+    -- self.current_batch = 1
 
     -- print (self.x_batches[{self.current_batch,{},{},{}}]:mean()) -- 0.00039700941962218
-    return self.x_batches[{self.current_batch,{},{},{}}] / (self.x_batches[{self.current_batch,{},{},{}}]:mean())
+    -- return self.x_batches[{self.current_batch,{},{},{}}] / (self.x_batches[{self.current_batch,{},{},{}}]:mean())
+    return self.x_batches[{self.current_batch,{},{},{}}]
 end
 
 return TimitBatchLoader

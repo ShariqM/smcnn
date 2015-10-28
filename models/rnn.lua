@@ -27,10 +27,25 @@ function RNN.rnn(input_size, rnn_size, pool_size, n, dropout)
     end
 
     -- RNN tick
-    local i2h = nn.Linear(input_size_L, rnn_size)(x)
-    local h2h = nn.Linear(rnn_size, rnn_size)(prev_h)
-    local next_h = nn.Tanh()(nn.CAddTable(){i2h, h2h})
-    if L == math.floor((n-1)/2) then -- Middle Layer
+    i2h = nn.Linear(input_size_L, rnn_size)(x)
+    h2h = nn.Linear(rnn_size, rnn_size)(prev_h)
+
+    local params, grads = i2h.data.module:parameters()
+    params[1]:set(torch.eye(rnn_size))
+    params[2]:set(torch.zeros(rnn_size))
+
+
+    local params, grads = h2h.data.module:parameters()
+    params[1]:set(torch.zeros(rnn_size, rnn_size))
+    params[2]:set(torch.zeros(rnn_size))
+
+    print ('norm', params[1]:norm())
+
+    -- local next_h = nn.Tanh()(nn.CAddTable(){i2h, h2h})
+    -- local next_h = nn.ReLU()(nn.CAddTable(){i2h, h2h})
+    local next_h = nn.CAddTable(){i2h, h2h}
+    -- if L == math.floor((n-1)/2) then -- Middle Layer
+    if L == 1 then
       -- prev_pool = inputs[#inputs]
       reshape_h = nn.Reshape(1,1,rnn_size)(next_h)
       pool      = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_h)
@@ -43,13 +58,18 @@ function RNN.rnn(input_size, rnn_size, pool_size, n, dropout)
   -- set up the decoder
   local top_h = outputs[#outputs]
   if dropout > 0 then top_h = nn.Dropout(dropout)(top_h) end
-  local x_hat = nn.Linear(rnn_size, input_size)(top_h)
-  table.insert(outputs, x_hat)
+  -- local x_hat = nn.Linear(rnn_size, input_size)(top_h)
+  local h2o = nn.NormLinear(rnn_size, input_size)(top_h)
+  table.insert(outputs, h2o)
+
+  local params, grads = h2o.data.module:parameters()
+  params[1]:set(torch.eye(rnn_size))
+  params[2]:set(torch.zeros(rnn_size))
 
   -- table.insert(outputs, stability)
   table.insert(outputs, pool)
 
-  return nn.gModule(inputs, outputs)
+  return {nn.gModule(inputs, outputs), i2h, h2h, h2o}
 end
 
 return RNN
