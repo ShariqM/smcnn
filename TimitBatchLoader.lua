@@ -34,7 +34,7 @@ end
 
 function TimitBatchLoader:next_batch()
     is_new_batch = false
-    if self.current_batch == 0 or self.current_batch == 20 then
+    if self.current_batch % self.batches == 0 then
         is_new_batch = true
         self.current_batch = 0
         self.x_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length, self.cqt_features)
