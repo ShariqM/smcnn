@@ -15,7 +15,6 @@ nspeakers = len(speakers)
 phn2vec = get_x2vec(phonemes)
 spk2vec = get_x2vec(speakers)
 
-
 # fnames = glob.glob('timit/TRAIN/*/*/*.PHN')
 fnames = glob.glob('timit/TRAIN/DR1/*/*.PHN') # Let's just try dialect 1 for now
 F  = 32768 # Number of freq extracted, == 2.048 seconds @ 16kHz
