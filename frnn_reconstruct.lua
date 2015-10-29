@@ -37,7 +37,7 @@ cmd:text()
 cmd:text('Options')
 -- data
 -- model params
-cmd:option('-rnn_sizes', {175}, 'Size of each layer, length specifies num layers')
+cmd:option('-rnn_sizes', {130,80,130}, 'Size of each layer, length specifies num layers')
 cmd:option('-spk_size', {10}, 'Size of speaker latent space')
 -- cmd:option('-rnn_sizes', {120,80,120}, 'Size of each layer, length specifies num layers')
 cmd:option('-model', 'rnn', 'lstm or rnn')
@@ -114,16 +114,27 @@ else
                              opt.dropout))
     end
     protos.criterion_rct = nn.MSECriterion()
-    protos.criterion_stb = nn.MSECriterion() -- L2 ok?
+    protos.classify_s = nn.ClassNLLCriterion()
+    protos.classify_p = nn.ClassNLLCriterion()
 end
 
 -- the initial state of the cell/hidden states
 init_state = {}
+local pool_layer = 1 + math.floor((opt.num_layers-1)/2) -- Middle layer
+local phn_size = rnn_sizes[pool_layer] - spk_size
 for L=1,opt.num_layers do
-    local h_init = torch.zeros(opt.batch_size, opt.rnn_sizes[L])
-    if opt.type == 'cuda' then h_init = h_init:cuda() end
-    table.insert(init_state, h_init:clone())
-    if opt.model == 'lstm' then table.insert(init_state, h_init:clone()) end
+    local h_init
+    if L ~= pool_layer then
+        h_inits = {torch.zeros(opt.batch_size, opt.rnn_sizes[L])}
+    else
+        h_inits = {torch.zeros(opt.batch_size, spk_size),
+                   torch.zeros(opt.batch_size, phn_size)}
+    for i=1, #h_inits do
+        h_init = h_inits[i]
+        if opt.type == 'cuda' then h_init = h_init:cuda() end
+        table.insert(init_state, h_init:clone())
+        if opt.model == 'lstm' then table.insert(init_state, h_init:clone()) end
+    end
 end
 
 -- Put everything on the GPU
@@ -142,7 +153,6 @@ if do_random_init then
     params:uniform(-1e-5, 1e-5) -- small uniform numbers
     -- params:uniform(-1e-5, 1e-5)
 end
-
 
 -- initialize the LSTM forget gates with slightly higher biases to encourage remembering in the beginning
 if opt.model == 'lstm' then
@@ -175,15 +185,17 @@ function feval(x)
     grad_params:zero()
 
     ------------------ get minibatch -------------------
-    x, is_new_batch = loader:next_batch()
+    x, y, is_new_batch = loader:next_batch()
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
     if is_new_batch then init_state_global = clone_list(init_state) end -- Reset hidden state
+    -- TODO/FIXME? Not resetting the hidden state on phoneme change...
 
     ------------------- forward pass -------------------
     local rnn_state = {[0] = init_state_global}
     local reconstructions = {}
     local loss = 0
-    local snr2 = 0
+    local softmax_s = {}
+    local softmax_p = {}
 
     for t=1,opt.seq_length do
         clones.rnn[t]:training() -- make sure we are in correct mode (this is cheap, sets flag)
@@ -192,19 +204,15 @@ function feval(x)
         rnn_state[t] = {}
         for i=1, #init_state do table.insert(rnn_state[t], lst[i]) end -- extract the state, without output
 
-        pool_state[t] = lst[#lst]
-        reconstructions[t] = lst[#lst - 1] -- second to last element is the reconstruction
-        -- print ('X norm', x[{{},t,{}}]:norm())
-        -- print ('Pool norm', pool_state[t]:norm())
+        reconstructions[t] = lst[#lst - 2]
+        softmax_s[t]       = lst[#lst - 1]
+        softmax_p[t]       = lst[#lst]
 
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
         tot_snr = tot_snr -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
 
-        prev_pool = pool_state[t]
-        if t > 3 then
-            prev_pool = pool_state[t-1]
-        end
-        loss = loss + clones.criterion_stb[t]:forward(prev_pool, pool_state[t]) -- TODO no err erly
+        loss = loss + clones.classify_s[t]:forward(softmax_s, spk)
+        loss = loss + clones.classify_p[t]:forward(prev_pool, y[t]) -- TODO no err erly
     end
 
     ------------------ backward pass -------------------
@@ -212,17 +220,13 @@ function feval(x)
     local drnn_state = {[opt.seq_length] = clone_list(init_state, true)} -- true also zeros the clones
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
-        local doutput_t = clones.criterion_rct[t]:backward(reconstructions[t], x[{{},t,{}}])
-
-        prev_pool = pool_state[t]
-        if t > 3 then
-            prev_pool = pool_state[t-1]
-        end
-        doutput2_t = clones.criterion_stb[t]:backward(prev_pool, pool_state[t])
-        -- doutput2_t:fill(0) -- FIXME No Influence for now
+        local doutput_t  = clones.criterion_rct[t]:backward(reconstructions[t], x[{{},t,{}}])
+        local doutput2_t = clones.classify_s[t]:backward(softmax_s[t], spk)
+        local doutput3_t = clones.classify_p[t]:backward(softmax_p[t], y[t])
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
+        table.insert(drnn_state[t], doutput3_t)
         local dlst = clones.rnn[t]:backward({x[{{},t,{}}], unpack(rnn_state[t-1])}, drnn_state[t])
 
         drnn_state[t-1] = {}
@@ -239,7 +243,7 @@ function feval(x)
 
     init_state_global = rnn_state[#rnn_state] -- NOTE: I don't think this needs to be a clone, right?
 
-    -- grad_params:div(opt.seq_length) -- this line should be here but since we use rmsprop it would have no effect. Removing for efficiency
+    -- grad_params:div(opt.seq_length) -- FIXME? this line should be here but since we use rmsprop it would have no effect. Removing for efficiency
     -- clip gradient element-wise
     grad_params:clamp(-opt.grad_clip, opt.grad_clip)
     return loss, grad_params
@@ -256,7 +260,6 @@ local seq_loss = 0
 local j = 0
 
 function pool_plot()
-    -- print ('try plot')
     dist = torch.Tensor(opt.seq_length)
     for i=1,opt.seq_length do
         dist[i] = (pool_state[i] - pool_state[1]):norm()
@@ -264,23 +267,23 @@ function pool_plot()
     gnuplot.title('Norm of Pool state X_t vs Pool State X_1')
     gnuplot.xlabel('Time (t)')
     gnuplot.ylabel('Norm')
-    -- gnuplot.axis({1, opt.seq_length, 1, opt.rnn_size * 5})
     gnuplot.axis({1, opt.seq_length, 1, 1000})
     gnuplot.plot(dist)
-    -- print ('plotted')
 end
 
--- print ('hello?')
 for i = 1, iterations do
-    j = j + 1
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
     local _, loss = optim.sgd(feval, params, optim_state) -- Works better than adagrad or rmsprop
     local time = timer:time().real
 
+    local train_loss = loss[1] -- the loss is inside a list, pop it
+    train_losses[i] = train_loss
+
     -- pool_plot()
 
+    j = j + 1
     seq_loss = seq_loss + loss[1]
     if i % 80 == 0 then
         print (string.format("Loss: %.3f SNR: %.2fdB", seq_loss, (tot_snr/(j * opt.seq_length))))
@@ -289,9 +292,6 @@ for i = 1, iterations do
         j = 0
 
     end
-
-    local train_loss = loss[1] -- the loss is inside a list, pop it
-    train_losses[i] = train_loss
 
     -- exponential learning rate decay
     if i % iterations_per_epoch == 0 and opt.learning_rate_decay < 1 then
