@@ -1,7 +1,7 @@
 import numpy as np
 import glob
 import pdb
-from helpers import cleanup_line, get_char2vec
+from helpers import cleanup_line, get_x2vec
 import scipy.io as io
 
 sentences_per_speaker = 10
@@ -10,7 +10,7 @@ longest_sentence = 80
 characters = [' ', '!', '"', "'", ',', '-', '.', ':', ';', '?', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']
 numchars = len(characters)
 
-char2vec = get_char2vec(characters)
+char2vec = get_x2vec(characters)
 
 def get_mfname(fname):
     path = fname.split('/')

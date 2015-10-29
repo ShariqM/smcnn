@@ -10,6 +10,7 @@ nexamples = 2000
 result = np.zeros((nexamples,1024,175))
 i = 0
 for fname in fnames:
+    phn_fname =
     for j in range(0,10):
         a = io.loadmat(fname)
         b = a['data']
@@ -20,7 +21,7 @@ for fname in fnames:
             print i
         if i == nexamples:
             print 'start save'
-            io.savemat('timit/TRAIN/process/%d.mat' % i, {'X':result})
+            io.savemat('timit/TRAIN/process/data_%d.mat' % i, {'X':result})
             print 'saved at %d' % i
             sys.exit(0)
 

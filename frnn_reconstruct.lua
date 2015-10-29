@@ -185,7 +185,7 @@ function feval(x)
     grad_params:zero()
 
     ------------------ get minibatch -------------------
-    x, y, is_new_batch = loader:next_batch()
+    x, y, is_new_batch = loader:next_batch_c()
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
     if is_new_batch then init_state_global = clone_list(init_state) end -- Reset hidden state
     -- TODO/FIXME? Not resetting the hidden state on phoneme change...
@@ -290,7 +290,6 @@ for i = 1, iterations do
         seq_loss =  0
         tot_snr = 0
         j = 0
-
     end
 
     -- exponential learning rate decay

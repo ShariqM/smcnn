@@ -1,12 +1,12 @@
 import numpy as np
 
-def get_char2vec(characters):
-    char2vec = {}
-    for i in range(len(characters)):
-        vec = np.zeros(len(characters))
+def get_x2vec(x):
+    x2vec = {}
+    for i in range(len(x)):
+        vec = np.zeros(len(x))
         vec[i] = 1
-        char2vec[characters[i]] = vec
-    return char2vec
+        x2vec[x[i]] = vec
+    return x2vec
 
 def cleanup_line(line):
     words = line.split(' ')[2:] # Remove Time stamps
