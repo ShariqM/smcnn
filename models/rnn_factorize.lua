@@ -1,23 +1,28 @@
 local RNN = {}
 
-function RNN.rnn(input_size, rnn_sizes, spk_size, pool_size, dropout)
+function RNN.rnn(input_size, rnn_sizes, spk_size, lens, pool_size, dropout)
 
+  nspeakers, nphonemes = unpack(lens)
   -- there are n+1 inputs (hiddens on each layer and x)
   local inputs = {}
   local n = tableLength(rnn_sizes) -- Num layers
+  local pool_layer = 1 + math.floor((n-1)/2) -- Middle layer
+
   table.insert(inputs, nn.Identity()()) -- x
   for L = 1,n do
     table.insert(inputs, nn.Identity()()) -- prev_h[L]
+    if L == pool_layer then
+        table.insert(inputs, nn.Identity()()) -- Extra input
+    end
   end
-  table.insert(inputs, nn.Identity()()) -- Speaker hidden state
-  table.insert(inputs, nn.Identity()()) -- Phoneme hidden state
 
-  local pool_layer = 1 + math.floor((n-1)/2) -- Middle layer
   local phn_size = rnn_sizes[pool_layer] - spk_size
   rnn_sizes[0] = input_size
 
   local x
   local outputs = {}
+  local next_hs
+  local next_hp
   local softmax_s
   local softmax_p
 
@@ -27,7 +32,8 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, pool_size, dropout)
       x = inputs[1]
     else
       if L-1 == pool_layer then -- if previous layer was pool then have to concat it for input
-        x = nn.Concat(2)({i2hs, i2hp})
+        -- x = nn.Concat(2)({next_hs, next_hp})
+        x = 'garbage'
       else
         x = outputs[(L-1)]
       end
@@ -46,8 +52,8 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, pool_size, dropout)
       hs2hs = nn.Linear(spk_size, spk_size)(prev_hs)
       hp2hp = nn.Linear(phn_size, phn_size)(prev_hp)
 
-      local next_hs = nn.ReLU()(nn.CAddTable(){i2hs, hs2hs})
-      local next_hp = nn.ReLU()(nn.CAddTable(){i2hp, hp2hp})
+      next_hs = nn.ReLU()(nn.CAddTable(){i2hs, hs2hs})
+      next_hp = nn.ReLU()(nn.CAddTable(){i2hp, hp2hp})
       table.insert(outputs, next_hs)
       table.insert(outputs, next_hp)
 
@@ -55,15 +61,26 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, pool_size, dropout)
       reshape_hp = nn.Reshape(1,1,phn_size)(next_hp)
       pool_hs    = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_hs)
       pool_hp    = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_hp)
-      rep_s      = nn.Linear(spk_size/pool_size, num_speakers)
-      rep_p      = nn.Linear(phn_size/pool_size, num_phonemes)
+
+      breshape_hs = nn.Reshape(spk_size/pool_size)(pool_hs)
+      breshape_hp = nn.Reshape(phn_size/pool_size)(pool_hp)
+
+      rep_s      = nn.Linear(spk_size/pool_size, nspeakers)(breshape_hs)
+      rep_p      = nn.Linear(phn_size/pool_size, nphonemes)(breshape_hp)
       softmax_s  = nn.LogSoftMax()(rep_s)
       softmax_p  = nn.LogSoftMax()(rep_p)
     else
       local prev_h = inputs[hi_idx]
       hi_idx = hi_idx + 1
 
-      i2h = nn.Linear(rnn_sizes[L-1], rnn_sizes[L])(x)
+      if L == 3 then
+        is2h = nn.Linear(spk_size, rnn_sizes[L])(next_hs)
+        ip2h = nn.Linear(phn_size, rnn_sizes[L])(next_hp)
+        i2h  = nn.CAddTable(){is2h, ip2h}
+      else
+        i2h = nn.Linear(rnn_sizes[L-1], rnn_sizes[L])(x)
+      end
+
       h2h = nn.Linear(rnn_sizes[L], rnn_sizes[L])(prev_h)
 
       local next_h = nn.ReLU()(nn.CAddTable(){i2h, h2h})

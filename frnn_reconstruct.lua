@@ -27,7 +27,7 @@ matio = require 'matio'
 matio.use_lua_strings = true
 local model_utils=require 'model_utils'
 local LSTM = require 'models.lstm'
-local RNN = require 'models.rnn'
+local RNN = require 'models.rnn_factorize'
 local TimitBatchLoader = require 'TimitBatchLoader'
 
 cmd = torch.CmdLine()
@@ -38,7 +38,7 @@ cmd:text('Options')
 -- data
 -- model params
 cmd:option('-rnn_sizes', {130,80,130}, 'Size of each layer, length specifies num layers')
-cmd:option('-spk_size', {10}, 'Size of speaker latent space')
+cmd:option('-spk_size', 10, 'Size of speaker latent space')
 -- cmd:option('-rnn_sizes', {120,80,120}, 'Size of each layer, length specifies num layers')
 cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
@@ -51,7 +51,7 @@ cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start d
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',50,'number of sequences to train on in parallel')
+cmd:option('-batch_size',40,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',50,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
@@ -110,8 +110,8 @@ else
     if opt.model == 'lstm' then
         protos.rnn = LSTM.lstm(cqt_features, opt.rnn_sizes, opt.pool_size, opt.dropout)
     elseif opt.model == 'rnn' then
-        protos.rnn, i2h, h2h, h2o = unpack(RNN.rnn(cqt_features, opt.rnn_sizes, opt.pool_size,
-                             opt.dropout))
+        protos.rnn, i2h, h2h, h2o = unpack(RNN.rnn(cqt_features, opt.rnn_sizes,
+                        opt.spk_size, {loader.nspeakers, loader.nphonemes}, opt.pool_size, opt.dropout))
     end
     protos.criterion_rct = nn.MSECriterion()
     protos.classify_s = nn.ClassNLLCriterion()
@@ -121,7 +121,8 @@ end
 -- the initial state of the cell/hidden states
 init_state = {}
 local pool_layer = 1 + math.floor((opt.num_layers-1)/2) -- Middle layer
-local phn_size = rnn_sizes[pool_layer] - spk_size
+spk_size = opt.spk_size
+local phn_size = opt.rnn_sizes[pool_layer] - spk_size
 for L=1,opt.num_layers do
     local h_init
     if L ~= pool_layer then
@@ -129,6 +130,8 @@ for L=1,opt.num_layers do
     else
         h_inits = {torch.zeros(opt.batch_size, spk_size),
                    torch.zeros(opt.batch_size, phn_size)}
+    end
+
     for i=1, #h_inits do
         h_init = h_inits[i]
         if opt.type == 'cuda' then h_init = h_init:cuda() end
@@ -185,7 +188,7 @@ function feval(x)
     grad_params:zero()
 
     ------------------ get minibatch -------------------
-    x, y, is_new_batch = loader:next_batch_c()
+    x, phn_class, spk_class, is_new_batch = unpack(loader:next_batch_c())
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
     if is_new_batch then init_state_global = clone_list(init_state) end -- Reset hidden state
     -- TODO/FIXME? Not resetting the hidden state on phoneme change...
@@ -211,8 +214,11 @@ function feval(x)
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
         tot_snr = tot_snr -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
 
-        loss = loss + clones.classify_s[t]:forward(softmax_s, spk)
-        loss = loss + clones.classify_p[t]:forward(prev_pool, y[t]) -- TODO no err erly
+        print (softmax_p[t]:size())
+        print (phn_class[{{},t,{}}]:size())
+        debug.debug()
+        loss = loss + clones.classify_p[t]:forward(softmax_p[t], phn_class[{{},t,{}}])
+        loss = loss + clones.classify_s[t]:forward(softmax_s[t], spk_class)
     end
 
     ------------------ backward pass -------------------
@@ -221,8 +227,8 @@ function feval(x)
     for t=opt.seq_length,1,-1 do
         -- backprop through loss, and softmax/linear
         local doutput_t  = clones.criterion_rct[t]:backward(reconstructions[t], x[{{},t,{}}])
-        local doutput2_t = clones.classify_s[t]:backward(softmax_s[t], spk)
-        local doutput3_t = clones.classify_p[t]:backward(softmax_p[t], y[t])
+        local doutput2_t = clones.classify_s[t]:backward(softmax_s[t], spk_class)
+        local doutput3_t = clones.classify_p[t]:backward(softmax_p[t], phn_class[{{},t,{}}])
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
