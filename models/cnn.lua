@@ -1,23 +1,36 @@
--- NETWORK
-num_conv_layers = 2
-filt_sizes = {5,5}
-pool_sizes = {2,2}
-channels = {6,16}
-channels[0] = 1 -- Input Channels (from data)
 
-net = nn.Sequential()
-for i = 1, num_conv_layers do
-    net:add(nn.TemporalConvolution(channels[i-1], channels[i], filt_sizes[i])) -- MM ?
-    net:add(nn.ReLU())
-    net:add(nn.TemporalMaxPooling(pool_sizes[i]))
+-- NETWORK
+
+local CNN = {}
+
+function CNN.cnn(nspeakers)
+    local filt_sizes = {{3,3}, {3,3}, {3,3}}
+    local apool_size = 2
+    local channels   = {{1,8,32,nspeakers}}
+
+    local num_layers = #filt_sizes + 1 -- + 1 for average pooling
+    local avg_layer  = num_layers - 1 -- Right before the last convolution
+
+    local layers     = {[0] = nn.Identity()}
+    local end_width  = 1024
+    local end_height = 175
+    for i = 1, num_layers do
+        if i ~= avg_layer then
+            local conv = nn.SpatialConvolution(nchannels[i-1], nchannels[i], filt_sizes[i])(layers[i-1])
+            layers[i]  = nn.ReLU(conv)
+            end_width  = end_width  - (filt_sizes[i][1] - 1)
+            end_height = end_height - (filt_sizes[i][2] - 1)
+        else
+            layers[i] = nn.SpatialAveragePooling(apool_size, apool_size)(layers[i-1])
+            end_width  = torch.ceil(end_width  / apool_size)
+            end_height = torch.ceil(end_height / apool_size)
+        end
+    end
+
+    local batched = nn.Reshape(end_width * end_height, nspeakers)(layers[num_layers])
+    local logsoft = nn.LogSoftMax()(batched)
+
+    return nn.gModule(layers[0], logsoft)
 end
 
--- TODO
-neurons = channels[num_conv_layers]
-net:add(nn.View(neurons))
-net:add(nn.Linear(16*5*5, 120))
-net:add(nn.Linear(120, 84))
-net:add(nn.Linear(84, 10))
-net:add(nn.LogSoftMax())
-
-print('Lenet5\n' .. net:__tostring());
+return CNN

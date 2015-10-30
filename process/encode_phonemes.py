@@ -45,6 +45,8 @@ for i, fname in zip(range(len(fnames)), fnames):
     path = fname.split('/')
     dialect, speaker = path[2], path[3]
     spkset.add(speaker)
+    print i
+    continue
 
     mfilename = 'timit/TRAIN/%s_%s.mat' % (dialect, speaker)
     idx = sent_idx[mfilename]
@@ -79,12 +81,11 @@ for i, fname in zip(range(len(fnames)), fnames):
     f.close()
 
 i = nexamples
-io.savemat('timit/TRAIN/process/DR1_data_%d.mat' % i, {'X':data})
-io.savemat('timit/TRAIN/process/DR1_phn_%d.mat' % i, {'X':phn_class})
-io.savemat('timit/TRAIN/process/DR1_spk_%d.mat' % i, {'X':spk_class})
-# io.savemat(
-# speakers = list(spkset)
-# speakers.sort()
-# print 'All Speakers:', speakers
-# numspeakers = len(speakers)
-# print 'Number of unique speakers: ', numspeakers
+# io.savemat('timit/TRAIN/process/DR1_data_%d.mat' % i, {'X':data})
+# io.savemat('timit/TRAIN/process/DR1_phn_%d.mat' % i, {'X':phn_class})
+# io.savemat('timit/TRAIN/process/DR1_spk_%d.mat' % i, {'X':spk_class})
+speakers = list(spkset)
+speakers.sort()
+print 'All Speakers:', speakers
+numspeakers = len(speakers)
+print 'Number of unique speakers: ', numspeakers
