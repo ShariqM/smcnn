@@ -56,5 +56,4 @@ end
 print ("After (train):", net:forward(trainset.data[{{1},{}}]))
 print ("After (test):", net:forward(testset.data[{{1},{}}]))
 
-
 -- TEST

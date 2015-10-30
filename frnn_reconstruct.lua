@@ -255,16 +255,6 @@ function feval(x)
     return loss, grad_params
 end
 
--- start optimization here
-train_losses = {}
-val_losses = {}
-local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
-local iterations = opt.max_epochs * opt.iters
-local iterations_per_epoch = opt.iters
-local loss0 = nil
-local seq_loss = 0
-local j = 0
-
 function pool_plot()
     dist = torch.Tensor(opt.seq_length)
     for i=1,opt.seq_length do
@@ -276,6 +266,16 @@ function pool_plot()
     gnuplot.axis({1, opt.seq_length, 1, 1000})
     gnuplot.plot(dist)
 end
+
+-- start optimization here
+train_losses = {}
+val_losses = {}
+local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
+local iterations = opt.max_epochs * opt.iters
+local iterations_per_epoch = opt.iters
+local loss0 = nil
+local seq_loss = 0
+local j = 0
 
 for i = 1, iterations do
     local epoch = i / iterations_per_epoch

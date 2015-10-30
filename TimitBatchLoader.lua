@@ -92,4 +92,9 @@ function TimitBatchLoader:next_batch_c()
            self.spk_batches, is_new_batch}
 end
 
+function TimitBatchLoader:next_spk()
+    local idx = torch.random(self.num_examples)
+    return {self.data[idx], self.spk_class[idx]}
+end
+
 return TimitBatchLoader
