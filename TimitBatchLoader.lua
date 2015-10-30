@@ -5,19 +5,12 @@ require 'lfs'
 local TimitBatchLoader = {}
 TimitBatchLoader.__index = TimitBatchLoader
 
-function TimitBatchLoader.create(cqt_features, batch_size, seq_length)
+function TimitBatchLoader.create(cqt_features)
     local self = {}
     setmetatable(self, TimitBatchLoader)
 
-    batches = math.floor(1024/seq_length)
-    tlength = batches * seq_length -- Cut off the rest
-
     self.num_examples = 380 -- 2000 is broken (matio's fault I think)
-    self.batches = batches
-    self.tlength = tlength
     self.cqt_features = cqt_features
-    self.batch_size = batch_size
-    self.seq_length = seq_length
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
     data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
@@ -27,18 +20,27 @@ function TimitBatchLoader.create(cqt_features, batch_size, seq_length)
     print (data:size())
     data = data / data:mean() -- Training does not work without this.
 
-
     self.nphonemes = 61
     self.nspeakers = 38
     self.data      = data
     self.phn_class = phn
-    self.spk_class = spk
-    self.current_batch = 0
-    self.evaluated_batches = 1
+    self.spk_class = spk[1]
 
     print('data load done.')
     collectgarbage()
     return self
+end
+
+function TimitBatchLoader.init_seq(batch_size, seq_length)
+    batches = math.floor(1024/seq_length)
+    tlength = batches * seq_length -- Cut off the rest
+
+    self.batches = batches
+    self.tlength = tlength
+    self.batch_size = batch_size
+    self.seq_length = seq_length
+    self.current_batch = 0
+    self.evaluated_batches = 1
 end
 
 function TimitBatchLoader:next_batch()
@@ -94,7 +96,8 @@ end
 
 function TimitBatchLoader:next_spk()
     local idx = torch.random(self.num_examples)
-    return {self.data[idx], self.spk_class[idx]}
+    idx = 1
+    return {torch.reshape(self.data[idx],1,1024,175), self.spk_class[idx]}
 end
 
 return TimitBatchLoader

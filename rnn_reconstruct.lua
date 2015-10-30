@@ -88,7 +88,8 @@ end
 
 -- Load the Training and Test Set
 cqt_features = 175
-local loader = TimitBatchLoader.create(cqt_features, opt.batch_size, opt.seq_length)
+local loader = TimitBatchLoader.create(cqt_features)
+loader.init_seq(opt.batch_size, opt.seq_length)
 
 local do_random_init = false
 if string.len(opt.init_from) > 0 then

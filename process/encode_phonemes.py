@@ -37,8 +37,8 @@ for mfilename in mfilenames:
 
 nexamples = 380
 data = np.zeros((nexamples, 1024, 175))
-phn_class = np.zeros((nexamples, 1024, nphonemes))
-spk_class = np.zeros((nexamples, nspeakers))
+phn_class = np.zeros((nexamples, 1024, nphonemes)) # FIXME
+spk_class = np.zeros(nexamples)
 spkset = set()
 
 for i, fname in zip(range(len(fnames)), fnames):
@@ -49,7 +49,7 @@ for i, fname in zip(range(len(fnames)), fnames):
     mfilename = 'timit/TRAIN/%s_%s.mat' % (dialect, speaker)
     idx = sent_idx[mfilename]
     sent_idx[mfilename] = idx + 1
-    # tmp = io.loadmat(mfilename)['data'][0][0][0]
+    # tmp = io.loadmat(mfilename)['data'][0][0][0] FIXME
     # data[i] = tmp[:,(idx*FP):((idx+1)*FP)].T
 
     bfreq, efreq = get_window(fname)
@@ -76,11 +76,12 @@ for i, fname in zip(range(len(fnames)), fnames):
         phn_class[i][sbin:ebin][:] = phn2vec[phn]
 
     # spk_class[i] = spk2vec[speaker]
-    assert speakers.index(speaker) != -1
-    spk_class[i] = speakers.index(speaker)
-    print i
+    spi = speakers.index(speaker)
+    spk_class[i] = speakers.index(speaker) + 1 # Ugh Lua 1 indexing
+    # print i
     f.close()
 
+# print (nspeakers)
 i = nexamples
 # io.savemat('timit/TRAIN/process/DR1_data_%d.mat' % i, {'X':data})
 # io.savemat('timit/TRAIN/process/DR1_phn_%d.mat' % i, {'X':phn_class})
