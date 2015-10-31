@@ -1,59 +1,115 @@
 require 'torch'
 require 'nn'
+require 'nngraph'
+require 'optim'
+require 'lfs'
+require 'gnuplot'
+require 'helpers'
+
 matio = require 'matio'
 matio.use_lua_strings = true
+local model_utils=require 'model_utils'
+local CNN = require 'models.cnn'
+local TimitBatchLoader = require 'TimitBatchLoader'
 
--- SETUP
 cmd = torch.CmdLine()
+cmd:text()
+cmd:text('Train a speech classificaiton model')
+cmd:text()
+cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
-cmd:option('-load_net', 'false', 'load pre-trained neural network')
-cmd:option('-net', 'dnn', 'type: dnn | cnn | lstm')
-opt = cmd:parse(arg or {})
+cmd:option('-iters',100,'iterations per epoch')
+cmd:option('-learning_rate',1e-2,'learning rate')
+cmd:option('-learning_rate_decay',0.97,'learning rate decay')
+cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
+cmd:option('-max_epochs',50,'number of full passes through the training data')
 
--- Load the Training and Test Set
-dofile('build_data/build_cdata.lua')
+cmd:option('-print_every',1,'how many steps/minibatches between printing out the loss')
+opt = cmd:parse(arg)
 
-if opt.type == 'cuda' then
-   print('==> switching to CUDA')
-   require 'cunn'
-   torch.setdefaulttensortype('torch.FloatTensor')
-   trainset.data = trainset.data:cuda()
-   testset.data = testset.data:cuda()
+-- CUDA
+if opt.type == 'float' then
+    print('==> switching to floats')
+    torch.setdefaulttensortype('torch.FloatTensor')
+elseif opt.type == 'cuda' then
+    print('==> switching to CUDA')
+    require 'cunn'
+    torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
-if false and opt.load_net then
-    net = torch.load('nets/%s.bin' % opt.net)
-    print 'hi'
-else
-    dofile ('models/%s.lua' % opt.net)
-end
+cqt_features = 175
+local loader = TimitBatchLoader.create(cqt_features)
 
--- LOSS
+nspeakers = 37
+cnn, batch_size = unpack(CNN.cnn(nspeakers))
 criterion = nn.ClassNLLCriterion()
 
 -- CUDA
 if opt.type == 'cuda' then
-   net:cuda()
+   cnn:cuda()
    criterion:cuda()
 end
 
-print ("Before (train):", net:forward(trainset.data[{{1},{}}]))
-print ("Correct: (train)", trainset.label[1])
+-- put the above things into one flattened parameters tensor
+params, grad_params = model_utils.combine_all_parameters(cnn)
+params:uniform(-0.08, 0.08) -- small uniform numbers
 
-print ("Before (test):", net:forward(testset.data[{{80},{}}]))
-print ("Correct (test):", testset.label[80])
+function feval(x)
+    if x ~= params then
+        params:copy(x)
+    end
+    grad_params:zero()
 
--- TRAIN
-trainer = nn.StochasticGradient(net, criterion)
-trainer.learningRate = 0.05
-for i=1,1 do
-    trainer.maxIteration = 50 -- just do 5 epochs of training.
-    trainer:train(trainset)
-    torch.save('net.bin', net)
-    print ('Saved %d' % i)
+    x, spk_class = unpack(loader:next_spk())
+    labels = torch.Tensor(batch_size):fill(spk_class)
+
+    if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+    if opt.type == 'cuda' then labels = labels:float():cuda() end -- Ship to GPU
+
+    pred = cnn:forward(x)
+    -- pred[{{},36}]:fill(0) -- No loss
+    -- print ('Max 36', torch.mean(torch.exp(pred[{{},36}]))) -- Should be approaching 1
+    local loss = criterion:forward(pred, labels)
+    local doutput = criterion:backward(pred, labels)
+    cnn:backward(x, doutput)
+
+    return loss, grad_params
 end
 
-print ("After (train):", net:forward(trainset.data[{{1},{}}]))
-print ("After (test):", net:forward(testset.data[{{1},{}}]))
+train_losses = {}
+local iterations = opt.max_epochs * opt.iters
+local iterations_per_epoch = opt.iters
+local loss0 = nil
+local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
 
--- TEST
+for i = 1, iterations do
+    local epoch = i / iterations_per_epoch
+
+    local timer = torch.Timer()
+    local _, loss = optim.sgd(feval, params, optim_state) -- Works better than adagrad or rmsprop
+    local time = timer:time().real
+
+    local train_loss = loss[1] -- the loss is inside a list, pop it
+    train_losses[i] = train_loss
+
+    -- exponential learning rate decay
+    if i % iterations_per_epoch == 0 and opt.learning_rate_decay < 1 then
+        if epoch >= opt.learning_rate_decay_after then
+            local decay_factor = opt.learning_rate_decay
+            optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
+            print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
+        end
+    end
+
+    if i % opt.print_every == 0 then
+        print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
+    end
+
+    -- handle early stopping if things are going really bad
+    if loss[1] ~= loss[1] then
+        print('loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cuda/cl?')
+        break -- halt
+    end
+    if loss0 == nil then loss0 = loss[1] end
+end
