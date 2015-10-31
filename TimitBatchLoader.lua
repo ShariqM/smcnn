@@ -13,9 +13,18 @@ function TimitBatchLoader.create(cqt_features)
     self.cqt_features = cqt_features
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
-    data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
-    phn  = matio.load(string.format('timit/TRAIN/process/DR1_phn_%d.mat', self.num_examples))['X']
-    spk  = matio.load(string.format('timit/TRAIN/process/DR1_spk_%d.mat', self.num_examples))['X']
+    -- data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
+    -- phn  = matio.load(string.format('timit/TRAIN/process/DR1_phn_%d.mat', self.num_examples))['X'][1]
+    -- spk  = matio.load(string.format('timit/TRAIN/process/DR1_spk_%d.mat', self.num_examples))['X'][1]
+
+    -- torch.save('timit/DR1_cqt.t7', data)
+    -- torch.save('timit/DR1_phn.t7', phn)
+    -- torch.save('timit/DR1_spk.t7', spk)
+    -- debug.debug()
+
+    data = torch.load('timit/DR1_cqt.t7')
+    phn = torch.load('timit/DR1_phn.t7')
+    spk = torch.load('timit/DR1_spk.t7')
 
     print (data:size())
     data = data / data:mean() -- Training does not work without this.
@@ -24,7 +33,7 @@ function TimitBatchLoader.create(cqt_features)
     self.nspeakers = 38
     self.data      = data
     self.phn_class = phn
-    self.spk_class = spk[1]
+    self.spk_class = spk
 
     print('data load done.')
     collectgarbage()

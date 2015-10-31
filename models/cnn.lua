@@ -37,7 +37,6 @@ function CNN.cnn(nspeakers)
     batch_size = end_width * end_height
     local batched = nn.Reshape(batch_size, nspeakers)(layers[num_layers])
     local logsoft = nn.Log()(nn.SpatialSoftMax()(batched))
-    -- local logsoft = nn.SpatialSoftMax()(batched)
 
     return {nn.gModule({layers[0]}, {logsoft}), batch_size}
 end
