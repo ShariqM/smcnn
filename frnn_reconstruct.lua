@@ -37,22 +37,23 @@ cmd:text()
 cmd:text('Options')
 -- data
 -- model params
-cmd:option('-rnn_sizes', {130,80,130}, 'Size of each layer, length specifies num layers')
-cmd:option('-spk_size', 10, 'Size of speaker latent space')
+-- cmd:option('-rnn_sizes', {140,140,140}, 'Size of each layer, length specifies num layers')
+cmd:option('-rnn_sizes', {150,140,140,140,150}, 'Size of each layer, length specifies num layers')
+cmd:option('-spk_size', 40, 'Size of speaker latent space')
 -- cmd:option('-rnn_sizes', {120,80,120}, 'Size of each layer, length specifies num layers')
 cmd:option('-model', 'rnn', 'lstm or rnn')
-cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
+cmd:option('-pool_size', 4, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',1e-4,'learning rate')
+cmd:option('-learning_rate',4e-4,'learning rate')
 -- cmd:option('-learning_rate',1e-6,'learning rate')
-cmd:option('-learning_rate_decay',0.97,'learning rate decay')
-cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-learning_rate_decay',0.99,'learning rate decay')
+cmd:option('-learning_rate_decay_after',40,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-seq_length',50,'number of timesteps to unroll for')
-cmd:option('-batch_size',40,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',50,'number of full passes through the training data')
+cmd:option('-batch_size',100,'number of sequences to train on in parallel')
+cmd:option('-max_epochs',4000,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
 cmd:option('-val_frac',0.05,'fraction of data that goes into validation set')
@@ -89,7 +90,7 @@ end
 -- Load the Training and Test Set
 cqt_features = 175
 local loader = TimitBatchLoader.create(cqt_features)
-loader.init_seq(opt.batch_size, opt.seq_length)
+loader:init_seq(opt.batch_size, opt.seq_length)
 
 local do_random_init = false
 if string.len(opt.init_from) > 0 then
@@ -99,10 +100,8 @@ if string.len(opt.init_from) > 0 then
 
     -- overwrite model settings based on checkpoint to ensure compatibility
     -- print('overwriting rnn_sizes=' .. checkpoint.opt.rnn_sizes .. ', model=' .. checkpoint.opt.model .. ' based on the checkpoint.')
-    -- opt.rnn_sizes = checkpoint.opt.rnn_sizes
-    opt.rnn_sizes = {}
-    opt.rnn_sizes[1] = checkpoint.opt.rnn_size
-    opt.num_layers = 1
+    opt.rnn_sizes = checkpoint.opt.rnn_sizes
+    opt.num_layers = tableLength(opt.rnn_sizes) - 1 -- -1 b/c models/rnn adds a 0 index
     opt.model = checkpoint.opt.model
     do_random_init = false
 else
@@ -190,7 +189,12 @@ function feval(x)
 
     ------------------ get minibatch -------------------
     x, phn_class, spk_class, is_new_batch = unpack(loader:next_batch_c())
-    if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU | Need Float?
+    if opt.type == 'cuda' then
+        x = x:float():cuda()
+        phn_class = phn_class:float():cuda()
+        spk_class = spk_class:float():cuda()
+    end
+
     if is_new_batch then init_state_global = clone_list(init_state) end -- Reset hidden state
     -- TODO/FIXME? Not resetting the hidden state on phoneme change...
 
@@ -215,10 +219,12 @@ function feval(x)
         loss = loss + clones.criterion_rct[t]:forward(reconstructions[t], x[{{},t,{}}])
         tot_snr = tot_snr -10 * math.log10(math.pow((x[{{},t,{}}] - reconstructions[t]):norm(),2)/(math.pow(x[{{},t,{}}]:norm(), 2)))
 
-        print (softmax_p[t]:size())
-        print (phn_class[{{},t,{}}]:size())
-        debug.debug()
-        loss = loss + clones.classify_p[t]:forward(softmax_p[t], phn_class[{{},t,{}}])
+        -- print (softmax_p[t]:size())
+        -- print (phn_class[{{},t}]:size())
+        -- print (torch.max(phn_class))
+        -- print (torch.min(phn_class))
+        -- debug.debug()
+        loss = loss + clones.classify_p[t]:forward(softmax_p[t], phn_class[{{},t}])
         loss = loss + clones.classify_s[t]:forward(softmax_s[t], spk_class)
     end
 
@@ -229,7 +235,7 @@ function feval(x)
         -- backprop through loss, and softmax/linear
         local doutput_t  = clones.criterion_rct[t]:backward(reconstructions[t], x[{{},t,{}}])
         local doutput2_t = clones.classify_s[t]:backward(softmax_s[t], spk_class)
-        local doutput3_t = clones.classify_p[t]:backward(softmax_p[t], phn_class[{{},t,{}}])
+        local doutput3_t = clones.classify_p[t]:backward(softmax_p[t], phn_class[{{},t}])
 
         table.insert(drnn_state[t], doutput_t)
         table.insert(drnn_state[t], doutput2_t)
@@ -282,7 +288,7 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    local _, loss = optim.sgd(feval, params, optim_state) -- Works better than adagrad or rmsprop
+    local _, loss = optim.adagrad(feval, params, optim_state) -- Works better than adagrad or rmsprop
     local time = timer:time().real
 
     local train_loss = loss[1] -- the loss is inside a list, pop it
@@ -293,7 +299,7 @@ for i = 1, iterations do
     j = j + 1
     seq_loss = seq_loss + loss[1]
     if i % 80 == 0 then
-        print (string.format("Loss: %.3f SNR: %.2fdB", seq_loss, (tot_snr/(j * opt.seq_length))))
+        print (string.format("Loss: %.3f SNR: %.2fdB %.4fs", seq_loss, (tot_snr/(j * opt.seq_length)), time))
         seq_loss =  0
         tot_snr = 0
         j = 0
@@ -310,7 +316,7 @@ for i = 1, iterations do
 
     -- every now and then or on last iteration
     if (i % opt.save_every == 0 or i == iterations) then
-        local savefile = string.format('%s/%s_epoch%.2f.t7', opt.checkpoint_dir, opt.model, epoch)
+        local savefile = string.format('%s/f%s_epoch%.2f.t7', opt.checkpoint_dir, opt.model, epoch)
         print('saving checkpoint to ' .. savefile)
         local checkpoint = {}
         checkpoint.protos = protos

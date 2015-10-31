@@ -31,12 +31,7 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, lens, pool_size, dropout)
     if L == 1 then
       x = inputs[1]
     else
-      if L-1 == pool_layer then -- if previous layer was pool then have to concat it for input
-        -- x = nn.Concat(2)({next_hs, next_hp})
-        x = 'garbage'
-      else
-        x = outputs[(L-1)]
-      end
+      x = outputs[#outputs]
       if dropout > 0 then x = nn.Dropout(dropout)(x) end -- apply dropout, if any
     end
 
@@ -59,8 +54,8 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, lens, pool_size, dropout)
 
       reshape_hs = nn.Reshape(1,1,spk_size)(next_hs)
       reshape_hp = nn.Reshape(1,1,phn_size)(next_hp)
-      pool_hs    = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_hs)
-      pool_hp    = nn.SpatialLPPooling(1, 2, pool_size, 1, 2)(reshape_hp)
+      pool_hs    = nn.SpatialLPPooling(1, 2, pool_size, 1, pool_size)(reshape_hs)
+      pool_hp    = nn.SpatialLPPooling(1, 2, pool_size, 1, pool_size)(reshape_hp)
 
       breshape_hs = nn.Reshape(spk_size/pool_size)(pool_hs)
       breshape_hp = nn.Reshape(phn_size/pool_size)(pool_hp)
@@ -73,7 +68,7 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, lens, pool_size, dropout)
       local prev_h = inputs[hi_idx]
       hi_idx = hi_idx + 1
 
-      if L == 3 then
+      if L-1 == pool_layer then
         is2h = nn.Linear(spk_size, rnn_sizes[L])(next_hs)
         ip2h = nn.Linear(phn_size, rnn_sizes[L])(next_hp)
         i2h  = nn.CAddTable(){is2h, ip2h}
@@ -93,7 +88,8 @@ function RNN.rnn(input_size, rnn_sizes, spk_size, lens, pool_size, dropout)
   local top_h = outputs[#outputs]
   if dropout > 0 then top_h = nn.Dropout(dropout)(top_h) end
 
-  local h2o = nn.NormLinear(rnn_sizes[n], input_size)(top_h)
+  -- local h2o = nn.NormLinear(rnn_sizes[n], input_size)(top_h)
+  local h2o = nn.Linear(rnn_sizes[n], input_size)(top_h)
   table.insert(outputs, h2o)
 
   -- Softmax's at the end

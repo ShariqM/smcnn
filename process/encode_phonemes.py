@@ -11,6 +11,7 @@ speakers = ['FCJF0', 'FDAW0', 'FDML0', 'FECD0', 'FETB0', 'FJSP0', 'FKFB0', 'FMEM
 
 nphonemes = len(phonemes)
 nspeakers = len(speakers)
+h_star_idx = phonemes.index('h#')
 
 phn2vec = get_x2vec(phonemes)
 spk2vec = get_x2vec(speakers)
@@ -38,6 +39,7 @@ for mfilename in mfilenames:
 nexamples = 380
 data = np.zeros((nexamples, 1024, 175))
 phn_class = np.zeros((nexamples, 1024))
+phn_class.fill(h_star_idx) # Some files are blank in beg and end
 spk_class = np.zeros(nexamples)
 spkset = set()
 
@@ -73,8 +75,7 @@ for i, fname in zip(range(len(fnames)), fnames):
         ebin = FP if pstop > efreq else ceil((pstop-bfreq) / F_B)
 
         pi = phonemes.index(phn)
-        assert pi != -1
-        phn_class[i][sbin:ebin] = pi
+        phn_class[i][sbin:ebin] = pi + 1 # Ugh lua indexing
 
     # spk_class[i] = spk2vec[speaker]
     spi = speakers.index(speaker)
@@ -86,6 +87,7 @@ for i, fname in zip(range(len(fnames)), fnames):
 # print (nspeakers)
 i = nexamples
 # io.savemat('timit/TRAIN/process/DR1_data_%d.mat' % i, {'X':data})
+assert np.min(phn_class) > 0
 io.savemat('timit/TRAIN/process/DR1_phn_%d.mat' % i, {'X':phn_class})
 io.savemat('timit/TRAIN/process/DR1_spk_%d.mat' % i, {'X':spk_class})
 speakers = list(spkset)

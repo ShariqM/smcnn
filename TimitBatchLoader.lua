@@ -14,19 +14,19 @@ function TimitBatchLoader.create(cqt_features)
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
     -- data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
-    -- phn  = matio.load(string.format('timit/TRAIN/process/DR1_phn_%d.mat', self.num_examples))['X'][1]
-    -- spk  = matio.load(string.format('timit/TRAIN/process/DR1_spk_%d.mat', self.num_examples))['X'][1]
+    -- phn  = matio.load(string.format('timit/TRAIN/process/DR1_phn_%d.mat', self.num_examples))['X']
+    -- spk = matio.load(string.format('timit/TRAIN/process/DR1_spk_%d.mat', self.num_examples))['X'][1]
 
     -- torch.save('timit/DR1_cqt.t7', data)
     -- torch.save('timit/DR1_phn.t7', phn)
     -- torch.save('timit/DR1_spk.t7', spk)
-    -- debug.debug()
 
     data = torch.load('timit/DR1_cqt.t7')
-    phn = torch.load('timit/DR1_phn.t7')
-    spk = torch.load('timit/DR1_spk.t7')
+    phn  = torch.load('timit/DR1_phn.t7')
+    spk  = torch.load('timit/DR1_spk.t7')
+    print (spk:size())
 
-    print (data:size())
+    -- print (data:size())
     data = data / data:mean() -- Training does not work without this.
 
     self.nphonemes = 61
@@ -40,7 +40,7 @@ function TimitBatchLoader.create(cqt_features)
     return self
 end
 
-function TimitBatchLoader.init_seq(batch_size, seq_length)
+function TimitBatchLoader:init_seq(batch_size, seq_length)
     batches = math.floor(1024/seq_length)
     tlength = batches * seq_length -- Cut off the rest
 
@@ -79,18 +79,18 @@ function TimitBatchLoader:next_batch_c()
         is_new_batch = true
         self.current_batch = 0
         self.x_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length, self.cqt_features)
-        self.phn_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length, self.nphonemes)
-        self.spk_batches = torch.Tensor(self.batch_size, self.nspeakers)
+        self.phn_batches = torch.Tensor(self.batches, self.batch_size, self.seq_length)
+        self.spk_batches = torch.Tensor(self.batch_size)
 
         for i=1,self.batch_size do
             local idx = torch.random(self.num_examples)
             split_x = self.data[{idx,{1,self.tlength},{}}]:split(self.seq_length,1)
-            split_y = self.phn_class[{idx,{1,self.tlength},{}}]:split(self.seq_length,1)
-            for k=1,20 do
+            split_y = self.phn_class[{idx,{1,self.tlength}}]:split(self.seq_length,1)
+            for k=1,self.batches do
                 self.x_batches[{k, i, {}, {}}] = split_x[k]
-                self.phn_batches[{k, i, {}, {}}] = split_y[k]
+                self.phn_batches[{k, i, {}}] = split_y[k]
             end
-            self.spk_batches[{i,{}}] = self.spk_class[idx]
+            self.spk_batches[i] = self.spk_class[idx]
         end
     end
 
@@ -99,7 +99,7 @@ function TimitBatchLoader:next_batch_c()
     -- self.current_batch = 1
 
     return {self.x_batches[{self.current_batch,{},{},{}}],
-           self.phn_batches[{self.current_batch,{},{},{}}],
+           self.phn_batches[{self.current_batch,{},{}}],
            self.spk_batches, is_new_batch}
 end
 
