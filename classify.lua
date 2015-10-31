@@ -39,7 +39,7 @@ end
 cqt_features = 175
 local loader = TimitBatchLoader.create(cqt_features)
 
-nspeakers = 37
+nspeakers = 38
 cnn, batch_size = unpack(CNN.cnn(nspeakers))
 criterion = nn.ClassNLLCriterion()
 
