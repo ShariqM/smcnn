@@ -19,7 +19,7 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',1e4,'learning rate')
+cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
@@ -41,7 +41,7 @@ end
 cqt_features = 175
 local loader = TimitBatchLoader.create(cqt_features)
 
-nspeakers = 38
+nspeakers = 37
 cnn, batch_size = unpack(CNN.cnn(nspeakers))
 criterion = nn.ClassNLLCriterion()
 
@@ -53,6 +53,7 @@ end
 
 -- put the above things into one flattened parameters tensor
 params, grad_params = model_utils.combine_all_parameters(cnn)
+params:uniform(-0.08, 0.08) -- small uniform numbers
 
 function feval(x)
     if x ~= params then
@@ -66,11 +67,12 @@ function feval(x)
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
     if opt.type == 'cuda' then labels = labels:float():cuda() end -- Ship to GPU
 
-    local pred = cnn:forward(x)
+    pred = cnn:forward(x)
+    -- pred[{{},36}]:fill(0) -- No loss
+    -- print ('Max 36', torch.mean(torch.exp(pred[{{},36}]))) -- Should be approaching 1
     local loss = criterion:forward(pred, labels)
-
     local doutput = criterion:backward(pred, labels)
-    local dcnn    = cnn:backward(x, doutput)
+    cnn:backward(x, doutput)
 
     return loss, grad_params
 end

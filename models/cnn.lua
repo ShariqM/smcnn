@@ -22,20 +22,22 @@ function CNN.cnn(nspeakers)
             local conv = nn.SpatialConvolution(nchannels[k-1], nchannels[k],
                                                w, h)(layers[i-1])
             layers[i]  = nn.ReLU()(conv)
+
             end_width  = end_width  - (filt_sizes[k][1] - 1)
             end_height = end_height - (filt_sizes[k][2] - 1)
             k = k + 1
         else
             layers[i] = nn.SpatialAveragePooling(aps, aps, aps, aps)(layers[i-1])
             end_width  = torch.ceil(end_width  / aps)
-            end_height = torch.floor(end_height / aps) -- wtf... floor for this one
+            end_height = torch.floor(end_height / aps) -- Floor here, ceil there... Don't know why.
         end
     end
 
-    print ('Predicted size', end_width, end_height)
+    -- print ('Predicted size', end_width, end_height)
     batch_size = end_width * end_height
     local batched = nn.Reshape(batch_size, nspeakers)(layers[num_layers])
     local logsoft = nn.Log()(nn.SpatialSoftMax()(batched))
+    -- local logsoft = nn.SpatialSoftMax()(batched)
 
     return {nn.gModule({layers[0]}, {logsoft}), batch_size}
 end

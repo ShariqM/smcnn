@@ -6,12 +6,12 @@ matio.use_lua_strings = true
 -- SETUP
 cmd = torch.CmdLine()
 cmd:option('-type', 'double', 'type: double | float | cuda')
-cmd:option('-load', 'false', 'load pre-trained neural network')
+cmd:option('-load_net', 'false', 'load pre-trained neural network')
 cmd:option('-net', 'dnn', 'type: dnn | cnn | lstm')
 opt = cmd:parse(arg or {})
 
 -- Load the Training and Test Set
-dofile('build_cdata.lua')
+dofile('build_data/build_cdata.lua')
 
 if opt.type == 'cuda' then
    print('==> switching to CUDA')
@@ -21,11 +21,11 @@ if opt.type == 'cuda' then
    testset.data = testset.data:cuda()
 end
 
-if opt.load then
+if false and opt.load_net then
     net = torch.load('nets/%s.bin' % opt.net)
     print 'hi'
 else
-    dofile ('%s.lua' % opt.net)
+    dofile ('models/%s.lua' % opt.net)
 end
 
 -- LOSS
