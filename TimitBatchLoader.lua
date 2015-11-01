@@ -105,8 +105,9 @@ end
 
 function TimitBatchLoader:next_spk()
     local idx = torch.random(self.num_examples)
-    idx = 1
+    idx = 2
     return {torch.reshape(self.data[idx],1,1024,175), self.spk_class[idx]}
+    -- return {torch.reshape(self.data[idx],1,1024,175), 10}
 end
 
 return TimitBatchLoader
