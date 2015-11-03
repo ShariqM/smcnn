@@ -49,7 +49,7 @@ function CNN.cnn_localmin(nspeakers)
 
     print (end_width, end_height)
     local batch_size = end_width * end_height
-    print ('bs', batch_size)
+    print ('batch size', batch_size)
     local view = nn.View(batch_size, nspeakers)(relu)
     -- local linear = nn.Linear(nchannels[k] * end_width * end_height, nspeakers)(view)
     -- local logsoft = nn.LogSoftMax()(linear)

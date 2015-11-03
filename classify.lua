@@ -61,7 +61,7 @@ end
 
 -- put the above things into one flattened parameters tensor
 params, grad_params = model_utils.combine_all_parameters(cnn)
--- params:uniform(-0.08, 0.08) -- small uniform numbers
+params:uniform(-1.00, 1.00) -- small uniform numbers
 print('number of parameters in the model: ' .. params:nElement())
 
 function feval(x)
