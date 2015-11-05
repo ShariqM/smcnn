@@ -24,16 +24,36 @@ end
 
 function CNN.cnn(nspeakers, batch_size)
     local x = nn.Identity()()
-    -- local conv1 = nn.SpatialConvolution(1,32,175,10)(x)
-    -- local conv1 = nn.SpatialConvolution(1,32,175,10)(x)
     filt_sizes = {{25,16}}
     div = 1
-    local conv1 = nn.SpatialConvolution(1, nspeakers, filt_sizes[1][1], filt_sizes[1][2],
-                                            filt_sizes[1][1]/div, filt_sizes[1][2]/div)(x)
+    local conv1 = nn.SpatialConvolution(1, 8, filt_sizes[1][1], filt_sizes[1][2],
+                                        filt_sizes[1][1]/div, filt_sizes[1][2]/div)(x)
     local relu1 = nn.ReLU()(conv1)
 
     g = -1
     local permute = nn.Transpose({2,3},{3,4})(relu1)
+    local view = nn.View(g, nspeakers)(permute)
+    local logsoft = nn.LogSoftMax()(view)
+
+    return {nn.gModule({x},{logsoft}), batch_size}
+end
+
+
+function CNN.cnn2(nspeakers, batch_size)
+    channels   = {[0]=1,4,16,nspeakers}
+    filt_sizes = {{5,8}, {5,2}, {1, 2}}
+    layers = {[0] = nn.Identity()()}
+    div = 1
+
+    for i=1, #filt_sizes do
+        local conv = nn.SpatialConvolution(nchannels[i-1], nchannels[i],
+                        filt_sizes[1][1], filt_sizes[1][2],
+                        filt_sizes[1][1]/div, filt_sizes[1][2]/div)(layers[i-1])
+        layers[i] = nn.ReLU()(conv)
+    end
+
+    g = -1
+    local permute = nn.Transpose({2,3},{3,4})(layers[#layers])
     local view = nn.View(g, nspeakers)(permute)
     local logsoft = nn.LogSoftMax()(view)
 

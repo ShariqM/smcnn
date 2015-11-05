@@ -106,10 +106,14 @@ function TimitBatchLoader:next_spk()
     data_batch = torch.Tensor(self.batch_size, 1, self.total_tlength, self.cqt_features)
     spk_labels = torch.Tensor(self.batch_size)
     for i=1, self.batch_size do
-        local idx = torch.random(self.num_examples)
-        idx = i
-        data_batch[{i,{},{},{}}] = self.data[idx]
-        spk_labels[i] = self.spk_class[idx]
+        j = i + 2
+        for idx=1, self.num_examples do
+            if self.spk_class[idx] == j then
+                data_batch[{i,{},{},{}}] = self.data[idx]
+                spk_labels[i] = self.spk_class[idx]
+                break
+            end
+        end
     end
     return {data_batch, spk_labels}
 end

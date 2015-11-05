@@ -16,16 +16,16 @@ cmd:text('Train a speech classificaiton model')
 cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
-cmd:option('-iters',40,'iterations per epoch')
-cmd:option('-learning_rate',4e-2,'learning rate')
-cmd:option('-learning_rate_decay',0.97,'learning rate decay')
-cmd:option('-learning_rate_decay_after',5,'in number of epochs, when to start decaying the learning rate')
+cmd:option('-iters',400,'iterations per epoch')
+cmd:option('-learning_rate',0,'learning rate')
+cmd:option('-learning_rate_decay',0.99,'learning rate decay')
+cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 
-cmd:option('-batch_size',12,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',100,'number of full passes through the training data')
+cmd:option('-batch_size', 4,'number of sequences to train on in parallel')
+cmd:option('-max_epochs',200,'number of full passes through the training data')
 
-cmd:option('-print_every',2,'how many steps/minibatches between printing out the loss')
+cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-init_from', '', 'initialize network parameters from checkpoint at this path')
@@ -41,17 +41,20 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
+plot_threshold = 16000
 cqt_features = 175
 total_tlength = 1024
 local loader = TimitBatchLoader.create(cqt_features, total_tlength, opt.batch_size)
 
 nspeakers = 38
+init_params = false
 if string.len(opt.init_from) > 0 then
     print('loading an Network from checkpoint ' .. opt.init_from)
     local checkpoint = torch.load(opt.init_from)
     cnn = checkpoint.model
+    init_params = false
 else
-    cnn = unpack(CNN.cnn(nspeakers, opt.batch_size))
+    cnn = unpack(CNN.cnn2(nspeakers, opt.batch_size))
     -- dummy_cnn, batch_size = unpack(CNN.cnn_simple(nspeakers, opt.batch_size))
 end
 criterion = nn.ClassNLLCriterion()
@@ -70,12 +73,14 @@ params, grad_params = model_utils.combine_all_parameters(cnn)
 nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
 -- params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
-params:uniform(-0.08, 0.08) -- small uniform numbers
+if init_params then
+    params:uniform(-0.08, 0.08) -- small uniform numbers
+end
 
 function heat_plot(image)
     heatmap = torch.Tensor(cqt_features, total_tlength)
     cqt_size = 25
-    time_size = 16
+    time_size = 32
     local g = 1
     for t=1, total_tlength/time_size do
         for c=1, cqt_features/cqt_size do
@@ -196,7 +201,7 @@ for i = 1, iterations do
     train_loss =  train_loss + loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
 
-    if i > 10 then
+    if i > plot_threshold then
         plot_time = true
     end
 
