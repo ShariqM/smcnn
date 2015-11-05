@@ -3,11 +3,30 @@
 
 local CNN = {}
 
+tlength = 1024
+-- tlength = 124
+
+function get_gModule(input, batched, batch_size, dummy)
+    local out
+    if dummy == true then
+        -- out = nn.Sum(2)(nn.Exp()(batched))
+        -- out = nn.Exp()(batched)
+        -- out = batched
+        out = nn.Sum(2)(batched)
+        -- out = nn.Exp()(nn.Sum(2)(batched))
+        -- out = nn.Sum(2)(nn.Exp()(batched))
+    else
+        out = nn.Log()(nn.SpatialSoftMax()(batched))
+    end
+
+    return {nn.gModule({input}, {out}), batch_size}
+end
+
 function CNN.cnn_works(nspeakers)
     local x = nn.Identity()()
 
-    local view = nn.View(1024 * 175)(x)
-    local linear = nn.Linear(1024 * 175, nspeakers)(view)
+    local view = nn.View(tlength * 175)(x)
+    local linear = nn.Linear(tlength * 175, nspeakers)(view)
     local logsoft = nn.LogSoftMax()(linear)
 
     return {nn.gModule({x},{logsoft}), 1}
@@ -18,8 +37,8 @@ function CNN.cnn_simple(nspeakers)
     print 'go'
 
     local batch_size = 17
-    local view = nn.View(1024 * 175)(x)
-    local linear = nn.Linear(1024 * 175, batch_size * nspeakers)(view)
+    local view = nn.View(tlength * 175)(x)
+    local linear = nn.Linear(tlength * 175, batch_size * nspeakers)(view)
     local relu = nn.ReLU()(linear)
     local view2 = nn.View(batch_size, nspeakers)(relu)
 
@@ -29,13 +48,13 @@ function CNN.cnn_simple(nspeakers)
 end
 
 function CNN.cnn_localmin(nspeakers)
-    local filt_sizes = {{175,1024}} -- Width height order Ugh
+    local filt_sizes = {{175,tlength}} -- Width height order Ugh
     -- local filt_sizes = {{20,100}} -- Width height order Ugh
     local nchannels  = {nspeakers}
     nchannels[0] = 1
 
     local layers     = {[0] = nn.Identity()()}
-    local end_height = 1024
+    local end_height = tlength
     local end_width  = 175
     local k = 1
     local i = 1
@@ -58,7 +77,32 @@ function CNN.cnn_localmin(nspeakers)
     return {nn.gModule({layers[0]},{logsoft}), batch_size}
 end
 
-function CNN.cnn(nspeakers)
+function CNN.cnn_simple(nspeakers, batch_size)
+    local x = nn.Identity()()
+    local conv1 = nn.SpatialConvolution(1,32,175,20)(x)
+    local relu1 = nn.ReLU()(conv1)
+
+    -- local conv2 = nn.SpatialConvolution(32,nspeakers,10,1, 10, 1)(relu1)
+    local conv2 = nn.SpatialConvolution(32,nspeakers,1,20)(relu1)
+    local relu2 = nn.ReLU()(conv2)
+
+    -- 1 2 3
+    -- 2 1 3
+    -- 2 3 1
+    -- local permute = nn.Transpose({1,2},{2,3})(relu2)
+    -- local g = 31
+    local g = -1
+    local permute = nn.Transpose({2,3},{3,4})(relu2)
+    -- local view = nn.View(batch_size, g, nspeakers)(permute)
+    local view = nn.View(g, nspeakers)(permute)
+    local logsoft = nn.LogSoftMax()(view)
+    -- local logsoft = nn.Log()(nn.SpatialSoftMax()(view))
+
+    return {nn.gModule({x},{logsoft}), batch_size}
+end
+
+
+function CNN.cnn(nspeakers, dummy)
     local x = nn.Identity()()
     local conv1 = nn.SpatialConvolution(1,32,5,5)(x)
     local relu1 = nn.ReLU()(conv1)
@@ -78,10 +122,12 @@ function CNN.cnn(nspeakers)
     local relu5 = nn.ReLU()(conv5)
 
     local batch_size = 56 * 34
+    print ("batch_size is " .. batch_size)
     local view = nn.View(batch_size, nspeakers)(relu5)
     local logsoft = nn.LogSoftMax()(view)
 
-    return {nn.gModule({x},{logsoft}), batch_size}
+    -- return {nn.gModule({x},{logsoft}), batch_size}
+    return get_gModule(x, view, batch_size, dummy)
 end
 
 
@@ -96,7 +142,7 @@ function CNN.cnn_avg(nspeakers)
 
     local num_layers = 3
     local layers     = {[0] = nn.Identity()()}
-    local end_height = 1024
+    local end_height = tlength
     local end_width  = 175
     local k = 1
     local i = 1
@@ -118,14 +164,15 @@ function CNN.cnn_avg(nspeakers)
     print ('Calculated end dim', end_width, end_height)
     local batch_size = end_width * end_height
     local view = nn.View(batch_size, nspeakers)(layers[num_layers])
-    local logsoft = nn.Log()(nn.SpatialSoftMax()(view))
 
-    return {nn.gModule({layers[0]},{logsoft}), batch_size}
+    return get_gModule(layers[0], view, batch_size, dummy)
 end
 
-function CNN.cnn_original(nspeakers)
+
+function CNN.cnn_original(nspeakers, dummy)
     local aps = 2 -- Average Pool Size
-    local filt_sizes = {{3,3}, {3,3}, {3,3}} -- 2 indicates average pooling
+    -- local filt_sizes = {{3,3}, {3,3}, {3,3}} -- 2 indicates average pooling
+    local filt_sizes = {{8,8}, {8,8}, {8,8}} -- 2 indicates average pooling
     local nchannels  = {8, 32, nspeakers}
     nchannels[0] = 1
 
@@ -133,7 +180,7 @@ function CNN.cnn_original(nspeakers)
     local avg_layer  = num_layers - 1
 
     local layers     = {[0] = nn.Identity()()}
-    local end_width  = 1024
+    local end_width  = tlength
     local end_height = 175
     local k = 1
     for i = 1, num_layers do
@@ -153,12 +200,14 @@ function CNN.cnn_original(nspeakers)
         end
     end
 
-    -- print ('Predicted size', end_width, end_height)
     batch_size = end_width * end_height
+    -- batch_size = 58 * 83
+    batch_size = 48 * 73
+    batch_size = 498 * 73
+    print ("batch_size is " .. batch_size)
     local batched = nn.Reshape(batch_size, nspeakers)(layers[num_layers])
-    local logsoft = nn.Log()(nn.SpatialSoftMax()(batched))
 
-    return {nn.gModule({layers[0]}, {logsoft}), batch_size}
+    return get_gModule(layers[0], batched, batch_size, dummy)
 end
 
 return CNN

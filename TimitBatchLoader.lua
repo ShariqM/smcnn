@@ -5,12 +5,14 @@ require 'lfs'
 local TimitBatchLoader = {}
 TimitBatchLoader.__index = TimitBatchLoader
 
-function TimitBatchLoader.create(cqt_features)
+function TimitBatchLoader.create(cqt_features, batch_size)
     local self = {}
     setmetatable(self, TimitBatchLoader)
 
     self.num_examples = 380 -- 2000 is broken (matio's fault I think)
     self.cqt_features = cqt_features
+    self.batch_size = batch_size
+    self.total_tlength = 1024
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
     -- data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
@@ -28,6 +30,8 @@ function TimitBatchLoader.create(cqt_features)
 
     -- print (data:size())
     data = data / data:mean() -- Training does not work without this.
+    -- print (data:mean())
+    -- print (data:var())
 
     self.nphonemes = 61
     self.nspeakers = 38
@@ -40,13 +44,11 @@ function TimitBatchLoader.create(cqt_features)
     return self
 end
 
-function TimitBatchLoader:init_seq(batch_size, seq_length)
-    batches = math.floor(1024/seq_length)
+function TimitBatchLoader:init_seq(seq_length)
+    batches = math.floor(self.total_tlength/seq_length)
     tlength = batches * seq_length -- Cut off the rest
-
     self.batches = batches
     self.tlength = tlength
-    self.batch_size = batch_size
     self.seq_length = seq_length
     self.current_batch = 0
     self.evaluated_batches = 1
@@ -104,9 +106,18 @@ function TimitBatchLoader:next_batch_c()
 end
 
 function TimitBatchLoader:next_spk()
-    local idx = torch.random(self.num_examples)
-    idx = 1
-    return {torch.reshape(self.data[idx],1,1024,175), self.spk_class[idx]}
+    data_batch = torch.Tensor(self.batch_size, 1, self.total_tlength, self.cqt_features)
+    spk_labels = torch.Tensor(self.batch_size)
+    for i=1, self.batch_size do
+        local idx = torch.random(self.num_examples)
+        idx = i
+        data_batch[{i,{},{},{}}] = self.data[idx]
+        spk_labels[i] = self.spk_class[idx]
+    end
+    return {data_batch, spk_labels}
+    -- sz = 124
+    -- tmp = self.data[idx][{{1,sz},{}}]
+    -- return {torch.reshape(tmp,1,sz,175), self.spk_class[idx]}
     -- return {torch.reshape(self.data[idx],1,1024,175), 10}
 end
 
