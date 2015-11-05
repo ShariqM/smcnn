@@ -22,7 +22,7 @@ cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',5,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 
-cmd:option('-batch_size',8,'number of sequences to train on in parallel')
+cmd:option('-batch_size',1,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',100,'number of full passes through the training data')
 
 cmd:option('-print_every',2,'how many steps/minibatches between printing out the loss')
@@ -97,6 +97,7 @@ end
 
 local pred
 local mean_sum = 0
+local plot_time
 function feval(x)
     if x ~= params then
         params:copy(x)
@@ -118,42 +119,51 @@ function feval(x)
         end
         mean_sum_batch = mean_sum_batch + torch.mean(torch.exp(pred[{{1,b*num_per_batch},spk_labels[b]}]))
     end
-
-    gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
-    heatmap = torch.Tensor(cqt_features, total_tlength )
-    cqt_size = 25
-    time_size = 16
-    for c=1, cqt_features/cqt_size do
-        for t=1, total_tlength/time_size do
-            c_sidx = (c-1) * cqt_size + 1
-            c_eidx = c * cqt_size
-            t_sidx = (t-1) * time_size + 1
-            t_eidx = t * time_size
-            heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.uniform(0,1)
-        end
-    end
-    image = x[{1,1,{},{}}]:transpose(1,2)
-    cimage = image:clone()
-    one_std = cimage:mean() + (cimage:std()/2)
-    cimage:apply(function(i)
-        if i < one_std then
-            return 0
-        else
-            return -1
-        end
-    end)
-    -- print ('stats', image:min(), image:mean(), image:max())
-    -- iimage:apply(function()
-        -- if i <
-    gnuplot.figure(1)
-    gnuplot.imagesc(heatmap + cimage, 'color')
-    debug.debug()
-
-    gnuplot.figure(2)
-    gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
-    debug.debug()
-    -- print ('Time 2: ', timer:time().real)
     mean_sum = mean_sum + mean_sum_batch / opt.batch_size
+
+    if plot_time == true then
+        gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
+        heatmap = torch.Tensor(cqt_features, total_tlength )
+        cqt_size = 25
+        time_size = 16
+        local g = 1
+        for t=1, total_tlength/time_size do
+            for c=1, cqt_features/cqt_size do
+                c_sidx = (c-1) * cqt_size + 1
+                c_eidx = c * cqt_size
+                t_sidx = (t-1) * time_size + 1
+                t_eidx = t * time_size
+                heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.exp(pred[{g,spk_labels[1]}])
+                g = g + 1
+                -- heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.uniform(0,1)
+            end
+        end
+        -- q = torch.Tensor(2,2)
+        -- q[{1,1}] = 1
+        -- q[{1,2}] = 2
+        -- q[{2,1}] = 3
+        -- q[{2,2}] = 4
+        -- gnuplot.imagesc(q)
+        -- debug.debug()
+        image = x[{1,1,{},{}}]:transpose(1,2)
+
+        threshold = image:mean() + (image:std()/2)
+        for c=1, cqt_features do
+            for t=1, total_tlength do
+                if image[{c,t}] > threshold then
+                    heatmap[{c,t}] = -1
+                end
+            end
+        end
+
+        gnuplot.figure(1)
+        gnuplot.imagesc(heatmap, 'color')
+        debug.debug()
+
+        -- gnuplot.figure(2)
+        -- gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
+        -- print ('Time 2: ', timer:time().real)
+    end
 
     if opt.type == 'cuda' then batch_spk_labels = batch_spk_labels:float():cuda() end -- Ship to GPU
     local loss = criterion:forward(pred, batch_spk_labels)
@@ -218,6 +228,10 @@ for i = 1, iterations do
 
     train_loss =  train_loss + loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
+
+    if train_loss < 0.3 then
+        plot_time = true
+    end
 
     -- exponential learning rate decay
     if i % iterations_per_epoch == 0 and opt.learning_rate_decay < 1 then
