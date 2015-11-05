@@ -22,7 +22,7 @@ cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',5,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 
-cmd:option('-batch_size',1,'number of sequences to train on in parallel')
+cmd:option('-batch_size',12,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',100,'number of full passes through the training data')
 
 cmd:option('-print_every',2,'how many steps/minibatches between printing out the loss')
@@ -53,14 +53,6 @@ if string.len(opt.init_from) > 0 then
 else
     cnn = unpack(CNN.cnn_simple(nspeakers, opt.batch_size))
     -- dummy_cnn, batch_size = unpack(CNN.cnn_simple(nspeakers, opt.batch_size))
-    -- cnn, batch_size = unpack(CNN.cnn_localmin(nspeakers))
-    -- cnn, batch_size = unpack(CNN.cnn(nspeakers, false))
-    -- dummy_cnn, batch_size = unpack(CNN.cnn(nspeakers, true))
-    -- cnn, batch_size = unpack(CNN.cnn_original(nspeakers, false))
-    -- dummy_cnn, batch_size = unpack(CNN.cnn_original(nspeakers, true))
-    -- cnn, batch_size = unpack(CNN.cnn_original(nspeakers))
-    -- cnn, batch_size = unpack(CNN.cnn_localmin(nspeakers))
-    -- cnn, batch_size = unpack(CNN.cnn_localmin(nspeakers))
 end
 criterion = nn.ClassNLLCriterion()
 
@@ -73,29 +65,13 @@ end
 
 -- put the above things into one flattened parameters tensor
 params, grad_params = model_utils.combine_all_parameters(cnn)
-dummy_params, garbage = model_utils.combine_all_parameters(dummy_cnn)
-dummy_params:fill(1e-1)
+-- dummy_params, garbage = model_utils.combine_all_parameters(dummy_cnn)
+-- dummy_params:fill(1e-1)
 nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
 -- params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
 params:uniform(-0.08, 0.08) -- small uniform numbers
 
-function pool_plot()
-    -- print ('try plot')
-    dist = torch.Tensor(opt.seq_length)
-    for i=1,opt.seq_length do
-        dist[i] = (pool_state[i] - pool_state[1]):norm()
-    end
-    gnuplot.title('Norm of Pool state X_t vs Pool State X_1')
-    gnuplot.xlabel('Time (t)')
-    gnuplot.ylabel('Norm')
-    -- gnuplot.axis({1, opt.seq_length, 1, opt.rnn_size * 5})
-    gnuplot.axis({1, opt.seq_length, 1, 1000})
-    gnuplot.plot(dist)
-    -- print ('plotted')
-end
-
-local pred
 local mean_sum = 0
 local plot_time
 function feval(x)
@@ -138,16 +114,9 @@ function feval(x)
                 -- heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.uniform(0,1)
             end
         end
-        -- q = torch.Tensor(2,2)
-        -- q[{1,1}] = 1
-        -- q[{1,2}] = 2
-        -- q[{2,1}] = 3
-        -- q[{2,2}] = 4
-        -- gnuplot.imagesc(q)
-        -- debug.debug()
         image = x[{1,1,{},{}}]:transpose(1,2)
 
-        threshold = image:mean() + (image:std()/2)
+        threshold = image:mean() + (image:std()/4)
         for c=1, cqt_features do
             for t=1, total_tlength do
                 if image[{c,t}] > threshold then
@@ -157,7 +126,21 @@ function feval(x)
         end
 
         gnuplot.figure(1)
+        gnuplot.pngfigure('results/heatmap1.png')
+        gnuplot.title(string.format('Heatmap of CNN for Speaker 1 (NSpeakers=%d)', opt.batch_size))
+        gnuplot.xlabel('Time (t)')
+        gnuplot.ylabel('CQT')
+
         gnuplot.imagesc(heatmap, 'color')
+        gnuplot.plotflush()
+
+        gnuplot.figure(2)
+        gnuplot.pngfigure('results/image1.png')
+        gnuplot.title('Original Image')
+        gnuplot.xlabel('Time (t)')
+        gnuplot.ylabel('CQT')
+        gnuplot.imagesc(image, 'color')
+        gnuplot.plotflush()
         debug.debug()
 
         -- gnuplot.figure(2)
@@ -172,8 +155,6 @@ function feval(x)
     -- energy = dummy_cnn:forward(x)
     -- print ('Time 2: ', timer:time().real)
     -- weights = energy / energy:max()
-    -- pred[{{1,42163},36}]:fill(0) -- No loss
-    -- pred[{{1,42163},36}]:fill(0) -- No loss
 
     -- threshold = 0.8
     -- correct_vector = torch.Tensor(nspeakers):fill(-100)
@@ -195,19 +176,7 @@ function feval(x)
 
 
     local doutput = criterion:backward(pred, batch_spk_labels)
-    -- print (doutput:size())
     cnn:backward(x, doutput)
-    -- print (grad_params:norm())
-    -- norm_val = grad_params:norm()
-    -- x = grad_params:clone()
-    -- x = x/norm_val
-    -- for i=1,params:nElement() do
-        -- grad_params[i] = grad_params[i]/norm_val
-    -- end
-    -- print (torch.dist(x, grad_params))
-    -- print ('Time 4: ', timer:time().real)
-    -- print (grad_params:norm())
-    -- grad_params = grad_params * 1000
 
     return loss, grad_params
 end
@@ -229,7 +198,7 @@ for i = 1, iterations do
     train_loss =  train_loss + loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
 
-    if train_loss < 0.3 then
+    if i > 1000 then
         plot_time = true
     end
 
