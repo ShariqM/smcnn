@@ -5,14 +5,14 @@ require 'lfs'
 local TimitBatchLoader = {}
 TimitBatchLoader.__index = TimitBatchLoader
 
-function TimitBatchLoader.create(cqt_features, batch_size)
+function TimitBatchLoader.create(cqt_features, total_tlength, batch_size)
     local self = {}
     setmetatable(self, TimitBatchLoader)
 
     self.num_examples = 380 -- 2000 is broken (matio's fault I think)
     self.cqt_features = cqt_features
     self.batch_size = batch_size
-    self.total_tlength = 1024
+    self.total_tlength = total_tlength
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
     -- data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']

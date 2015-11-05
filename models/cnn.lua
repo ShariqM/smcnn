@@ -79,20 +79,20 @@ end
 
 function CNN.cnn_simple(nspeakers, batch_size)
     local x = nn.Identity()()
-    local conv1 = nn.SpatialConvolution(1,32,175,20)(x)
+    -- local conv1 = nn.SpatialConvolution(1,32,175,10)(x)
+    -- local conv1 = nn.SpatialConvolution(1,32,175,10)(x)
+    filt_sizes = {{25,16}}
+    div = 1
+    local conv1 = nn.SpatialConvolution(1, nspeakers, filt_sizes[1][1], filt_sizes[1][2],
+                                            filt_sizes[1][1]/div, filt_sizes[1][2]/div)(x)
     local relu1 = nn.ReLU()(conv1)
 
-    -- local conv2 = nn.SpatialConvolution(32,nspeakers,10,1, 10, 1)(relu1)
-    local conv2 = nn.SpatialConvolution(32,nspeakers,1,20)(relu1)
-    local relu2 = nn.ReLU()(conv2)
-
-    -- 1 2 3
-    -- 2 1 3
-    -- 2 3 1
-    -- local permute = nn.Transpose({1,2},{2,3})(relu2)
-    -- local g = 31
-    local g = -1
-    local permute = nn.Transpose({2,3},{3,4})(relu2)
+    -- (8x203x16x38)
+    -- (8x102x8x38)
+    -- (8x64x7x38)
+    g = -1
+    -- g = 3090432
+    local permute = nn.Transpose({2,3},{3,4})(relu1)
     -- local view = nn.View(batch_size, g, nspeakers)(permute)
     local view = nn.View(g, nspeakers)(permute)
     local logsoft = nn.LogSoftMax()(view)

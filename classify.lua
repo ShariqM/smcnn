@@ -17,12 +17,12 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',40,'iterations per epoch')
-cmd:option('-learning_rate',1e-2,'learning rate')
+cmd:option('-learning_rate',4e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',5,'in number of epochs, when to start decaying the learning rate')
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 
-cmd:option('-batch_size',32,'number of sequences to train on in parallel')
+cmd:option('-batch_size',8,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',100,'number of full passes through the training data')
 
 cmd:option('-print_every',2,'how many steps/minibatches between printing out the loss')
@@ -42,7 +42,8 @@ elseif opt.type == 'cuda' then
 end
 
 cqt_features = 175
-local loader = TimitBatchLoader.create(cqt_features, opt.batch_size)
+total_tlength = 1024
+local loader = TimitBatchLoader.create(cqt_features, total_tlength, opt.batch_size)
 
 nspeakers = 38
 if string.len(opt.init_from) > 0 then
@@ -78,10 +79,21 @@ nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
 -- params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
 params:uniform(-0.08, 0.08) -- small uniform numbers
--- params:uniform(-0.20, 0.20) -- small uniform numbers
--- params:normal(-0.50, 0.50) -- small uniform numbers
--- params:uniform(-1.00, 1.00) -- small uniform numbers
--- params:uniform(-100.00, 100.00) -- small uniform numbers
+
+function pool_plot()
+    -- print ('try plot')
+    dist = torch.Tensor(opt.seq_length)
+    for i=1,opt.seq_length do
+        dist[i] = (pool_state[i] - pool_state[1]):norm()
+    end
+    gnuplot.title('Norm of Pool state X_t vs Pool State X_1')
+    gnuplot.xlabel('Time (t)')
+    gnuplot.ylabel('Norm')
+    -- gnuplot.axis({1, opt.seq_length, 1, opt.rnn_size * 5})
+    gnuplot.axis({1, opt.seq_length, 1, 1000})
+    gnuplot.plot(dist)
+    -- print ('plotted')
+end
 
 local pred
 local mean_sum = 0
@@ -106,6 +118,40 @@ function feval(x)
         end
         mean_sum_batch = mean_sum_batch + torch.mean(torch.exp(pred[{{1,b*num_per_batch},spk_labels[b]}]))
     end
+
+    gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
+    heatmap = torch.Tensor(cqt_features, total_tlength )
+    cqt_size = 25
+    time_size = 16
+    for c=1, cqt_features/cqt_size do
+        for t=1, total_tlength/time_size do
+            c_sidx = (c-1) * cqt_size + 1
+            c_eidx = c * cqt_size
+            t_sidx = (t-1) * time_size + 1
+            t_eidx = t * time_size
+            heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.uniform(0,1)
+        end
+    end
+    image = x[{1,1,{},{}}]:transpose(1,2)
+    cimage = image:clone()
+    one_std = cimage:mean() + (cimage:std()/2)
+    cimage:apply(function(i)
+        if i < one_std then
+            return 0
+        else
+            return -1
+        end
+    end)
+    -- print ('stats', image:min(), image:mean(), image:max())
+    -- iimage:apply(function()
+        -- if i <
+    gnuplot.figure(1)
+    gnuplot.imagesc(heatmap + cimage, 'color')
+    debug.debug()
+
+    gnuplot.figure(2)
+    gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
+    debug.debug()
     -- print ('Time 2: ', timer:time().real)
     mean_sum = mean_sum + mean_sum_batch / opt.batch_size
 
