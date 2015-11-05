@@ -28,10 +28,7 @@ function TimitBatchLoader.create(cqt_features, total_tlength, batch_size)
     spk  = torch.load('timit/DR1_spk.t7')
     print (spk:size())
 
-    -- print (data:size())
     data = data / data:mean() -- Training does not work without this.
-    -- print (data:mean())
-    -- print (data:var())
 
     self.nphonemes = 61
     self.nspeakers = 38
@@ -115,10 +112,6 @@ function TimitBatchLoader:next_spk()
         spk_labels[i] = self.spk_class[idx]
     end
     return {data_batch, spk_labels}
-    -- sz = 124
-    -- tmp = self.data[idx][{{1,sz},{}}]
-    -- return {torch.reshape(tmp,1,sz,175), self.spk_class[idx]}
-    -- return {torch.reshape(self.data[idx],1,1024,175), 10}
 end
 
 return TimitBatchLoader

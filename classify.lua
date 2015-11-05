@@ -51,7 +51,7 @@ if string.len(opt.init_from) > 0 then
     local checkpoint = torch.load(opt.init_from)
     cnn = checkpoint.model
 else
-    cnn = unpack(CNN.cnn_simple(nspeakers, opt.batch_size))
+    cnn = unpack(CNN.cnn(nspeakers, opt.batch_size))
     -- dummy_cnn, batch_size = unpack(CNN.cnn_simple(nspeakers, opt.batch_size))
 end
 criterion = nn.ClassNLLCriterion()
@@ -71,6 +71,50 @@ nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
 -- params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
 params:uniform(-0.08, 0.08) -- small uniform numbers
+
+function heat_plot(image)
+    heatmap = torch.Tensor(cqt_features, total_tlength)
+    cqt_size = 25
+    time_size = 16
+    local g = 1
+    for t=1, total_tlength/time_size do
+        for c=1, cqt_features/cqt_size do
+            c_sidx = (c-1) * cqt_size + 1
+            c_eidx = c * cqt_size
+            t_sidx = (t-1) * time_size + 1
+            t_eidx = t * time_size
+            heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.exp(pred[{g,spk_labels[1]}])
+            g = g + 1
+        end
+    end
+
+    threshold = image:mean() + (image:std()/4)
+    for c=1, cqt_features do
+        for t=1, total_tlength do
+            if image[{c,t}] > threshold then
+                heatmap[{c,t}] = -1
+            end
+        end
+    end
+
+    gnuplot.figure(1)
+    gnuplot.pngfigure('results/heatmap1.png')
+    gnuplot.title(string.format('Heatmap of CNN for Speaker 1 (NSpeakers=%d)', opt.batch_size))
+    gnuplot.xlabel('Time (t)')
+    gnuplot.ylabel('CQT')
+
+    gnuplot.imagesc(heatmap, 'color')
+    gnuplot.plotflush()
+
+    gnuplot.figure(2)
+    gnuplot.pngfigure('results/image1.png')
+    gnuplot.title('Original Image')
+    gnuplot.xlabel('Time (t)')
+    gnuplot.ylabel('CQT')
+    gnuplot.imagesc(image, 'color')
+    gnuplot.plotflush()
+    debug.debug()
+end
 
 local mean_sum = 0
 local plot_time
@@ -98,54 +142,8 @@ function feval(x)
     mean_sum = mean_sum + mean_sum_batch / opt.batch_size
 
     if plot_time == true then
-        gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
-        heatmap = torch.Tensor(cqt_features, total_tlength )
-        cqt_size = 25
-        time_size = 16
-        local g = 1
-        for t=1, total_tlength/time_size do
-            for c=1, cqt_features/cqt_size do
-                c_sidx = (c-1) * cqt_size + 1
-                c_eidx = c * cqt_size
-                t_sidx = (t-1) * time_size + 1
-                t_eidx = t * time_size
-                heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.exp(pred[{g,spk_labels[1]}])
-                g = g + 1
-                -- heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.uniform(0,1)
-            end
-        end
-        image = x[{1,1,{},{}}]:transpose(1,2)
-
-        threshold = image:mean() + (image:std()/4)
-        for c=1, cqt_features do
-            for t=1, total_tlength do
-                if image[{c,t}] > threshold then
-                    heatmap[{c,t}] = -1
-                end
-            end
-        end
-
-        gnuplot.figure(1)
-        gnuplot.pngfigure('results/heatmap1.png')
-        gnuplot.title(string.format('Heatmap of CNN for Speaker 1 (NSpeakers=%d)', opt.batch_size))
-        gnuplot.xlabel('Time (t)')
-        gnuplot.ylabel('CQT')
-
-        gnuplot.imagesc(heatmap, 'color')
-        gnuplot.plotflush()
-
-        gnuplot.figure(2)
-        gnuplot.pngfigure('results/image1.png')
-        gnuplot.title('Original Image')
-        gnuplot.xlabel('Time (t)')
-        gnuplot.ylabel('CQT')
-        gnuplot.imagesc(image, 'color')
-        gnuplot.plotflush()
-        debug.debug()
-
-        -- gnuplot.figure(2)
-        -- gnuplot.imagesc(x[{1,1,{},{}}]:transpose(1,2), 'color')
-        -- print ('Time 2: ', timer:time().real)
+        print ('show')
+        heat_plot(x[{1,1,{},{}}]:transpose(1,2))
     end
 
     if opt.type == 'cuda' then batch_spk_labels = batch_spk_labels:float():cuda() end -- Ship to GPU
@@ -198,7 +196,7 @@ for i = 1, iterations do
     train_loss =  train_loss + loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
 
-    if i > 1000 then
+    if i > 10 then
         plot_time = true
     end
 
