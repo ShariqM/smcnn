@@ -17,12 +17,11 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',7e-3,'learning rate')
+cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.99,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
-cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 
-cmd:option('-batch_size', 4,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 1,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
@@ -41,7 +40,7 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
-plot_threshold = 16000
+plot_threshold = 4000
 cqt_features = 175
 total_tlength = 1024
 local loader = TimitBatchLoader.create(cqt_features, total_tlength, opt.batch_size)
@@ -54,26 +53,26 @@ if string.len(opt.init_from) > 0 then
     cnn = checkpoint.model
     init_params = false
 else
-    cnn = unpack(CNN.cnn2(nspeakers, opt.batch_size))
-    -- dummy_cnn, batch_size = unpack(CNN.cnn_simple(nspeakers, opt.batch_size))
+    cnn       = CNN.cnn2(nspeakers, false)
+    dummy_cnn = CNN.cnn2(nspeakers, true)
 end
 criterion = nn.ClassNLLCriterion()
 
 -- CUDA
 if opt.type == 'cuda' then
    cnn:cuda()
-   -- dummy_cnn:cuda()
+   dummy_cnn:cuda()
    criterion:cuda()
 end
 
 -- put the above things into one flattened parameters tensor
 params, grad_params = model_utils.combine_all_parameters(cnn)
--- dummy_params, garbage = model_utils.combine_all_parameters(dummy_cnn)
--- dummy_params:fill(1e-1)
+dummy_params, garbage = model_utils.combine_all_parameters(dummy_cnn)
+dummy_params:fill(1e-1)
 nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
--- params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
 if init_params then
+    params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
 
@@ -88,12 +87,16 @@ function heat_plot(image)
             c_eidx = c * cqt_size
             t_sidx = (t-1) * time_size + 1
             t_eidx = t * time_size
-            heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.exp(pred[{g,spk_labels[1]}])
+            if weights[g] == 1 then
+                heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = torch.exp(pred[{g,spk_labels[1]}])
+            else
+                heatmap[{{c_sidx, c_eidx}, {t_sidx, t_eidx}}] = -0.5
+            end
             g = g + 1
         end
     end
 
-    threshold = image:mean() + (image:std()/4)
+    threshold = image:mean()
     for c=1, cqt_features do
         for t=1, total_tlength do
             if image[{c,t}] > threshold then
@@ -121,6 +124,20 @@ function heat_plot(image)
     debug.debug()
 end
 
+x, spk_labels = unpack(loader:next_spk())
+if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+energy = dummy_cnn:forward(x)
+weights = energy / energy:max()
+threshold = weights:mean() - weights:std()/2
+weights:apply(function(i)
+    if i < threshold then
+        return 0
+    else
+        return 1
+    end
+end)
+diag_weights = torch.diag(weights:float()):cuda() -- Diag only works on float
+
 local mean_sum = 0
 local plot_time
 function feval(x)
@@ -142,7 +159,10 @@ function feval(x)
         for n=1, num_per_batch do
             batch_spk_labels[(b-1) * num_per_batch + n] = spk_labels[b]
         end
-        mean_sum_batch = mean_sum_batch + torch.mean(torch.exp(pred[{{1,b*num_per_batch},spk_labels[b]}]))
+        probabilities = torch.exp(pred[{{1,b*num_per_batch},spk_labels[b]}])
+        relevant = torch.cmul(weights, probabilities):float()
+        relevant = relevant:index(1, torch.squeeze(torch.nonzero(relevant)))
+        mean_sum_batch = mean_sum_batch + torch.mean(relevant)
     end
     mean_sum = mean_sum + mean_sum_batch / opt.batch_size
 
@@ -178,7 +198,8 @@ function feval(x)
     -- print ('mean prob for thresholding: ', tot_prob / c)
 
 
-    local doutput = criterion:backward(pred, batch_spk_labels)
+    doutput = criterion:backward(pred, batch_spk_labels)
+    doutput = diag_weights * doutput
     cnn:backward(x, doutput)
 
     return loss, grad_params
@@ -188,7 +209,7 @@ train_losses = {}
 local iterations = opt.max_epochs * opt.iters
 local iterations_per_epoch = opt.iters
 local loss0 = nil
-local optim_state = {learningRate = opt.learning_rate, alpha = opt.decay_rate}
+local optim_state = {learningRate = opt.learning_rate}
 local train_loss = 0
 
 for i = 1, iterations do

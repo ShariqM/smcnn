@@ -6,20 +6,20 @@ local CNN = {}
 tlength = 1024
 -- tlength = 124
 
-function get_gModule(input, batched, batch_size, dummy)
+function get_gModule(input, last, dummy)
     local out
     if dummy == true then
         -- out = nn.Sum(2)(nn.Exp()(batched))
         -- out = nn.Exp()(batched)
         -- out = batched
-        out = nn.Sum(2)(batched)
+        out = nn.Sum(2)(last)
         -- out = nn.Exp()(nn.Sum(2)(batched))
         -- out = nn.Sum(2)(nn.Exp()(batched))
     else
-        out = nn.Log()(nn.SpatialSoftMax()(batched))
+        out = nn.LogSoftMax()(last)
     end
 
-    return {nn.gModule({input}, {out}), batch_size}
+    return nn.gModule({input}, {out})
 end
 
 function CNN.cnn(nspeakers, batch_size)
@@ -39,25 +39,24 @@ function CNN.cnn(nspeakers, batch_size)
 end
 
 
-function CNN.cnn2(nspeakers, batch_size)
-    channels   = {[0]=1,4,16,nspeakers}
+function CNN.cnn2(nspeakers, dummy)
+    nchannels  = {[0]=1,4,16,nspeakers}
     filt_sizes = {{5,8}, {5,2}, {1, 2}}
     layers = {[0] = nn.Identity()()}
     div = 1
 
     for i=1, #filt_sizes do
         local conv = nn.SpatialConvolution(nchannels[i-1], nchannels[i],
-                        filt_sizes[1][1], filt_sizes[1][2],
-                        filt_sizes[1][1]/div, filt_sizes[1][2]/div)(layers[i-1])
+                        filt_sizes[i][1], filt_sizes[i][2],
+                        filt_sizes[i][1]/div, filt_sizes[i][2]/div)(layers[i-1])
         layers[i] = nn.ReLU()(conv)
     end
 
     g = -1
     local permute = nn.Transpose({2,3},{3,4})(layers[#layers])
     local view = nn.View(g, nspeakers)(permute)
-    local logsoft = nn.LogSoftMax()(view)
 
-    return {nn.gModule({x},{logsoft}), batch_size}
+    return get_gModule(layers[0], view, dummy)
 end
 
 function CNN.cnn_many(nspeakers, dummy)
