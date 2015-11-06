@@ -198,9 +198,11 @@ function TimitBatchLoader:next_batch(train)
 
     for i=1, self.batch_size do
         idx = self:next_idx(train)
+        print ('idx', idx)
 
         data_batch[{i,{},{},{}}] = data[idx]
         spk_batch[i] = spk_label[idx]
+        print ('spk', spk_label[idx])
         weight_batch[{{(i-1)*w_size + 1, i*w_size}}] = weights[idx]
     end
     self.batch_loading = true
