@@ -17,11 +17,11 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',4e-2,'learning rate')
+cmd:option('-learning_rate',8e-3,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
-cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 32,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
@@ -40,10 +40,10 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
-plot_threshold = 8000
+plot_threshold = 188000
 cqt_features = 175
-total_tlength = 1024
-local loader = TimitBatchLoader.create(cqt_features, total_tlength, opt.batch_size)
+timepoints = 1024
+local loader = TimitBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 38
 init_params = false
@@ -78,11 +78,11 @@ if init_params then
 end
 
 function heat_plot(image)
-    heatmap = torch.Tensor(cqt_features, total_tlength)
+    heatmap = torch.Tensor(cqt_features, timepoints)
     cqt_size = 25
     time_size = 32
     local g = 1
-    for t=1, total_tlength/time_size do
+    for t=1, timepoints/time_size do
         for c=1, cqt_features/cqt_size do
             c_sidx = (c-1) * cqt_size + 1
             c_eidx = c * cqt_size
@@ -99,7 +99,7 @@ function heat_plot(image)
 
     threshold = image:mean()
     for c=1, cqt_features do
-        for t=1, total_tlength do
+        for t=1, timepoints do
             if image[{c,t}] > threshold then
                 heatmap[{c,t}] = -1
             end
@@ -127,24 +127,31 @@ end
 
 loader:setup_weights(dummy_cnn, opt.type == 'cuda')
 
+x, spk_labels, weights = unpack(loader:next_spk())
+diag_weights = torch.diag(weights):float()
+
+if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
+
+
 local mean_sum = 0
 local plot_time
-function feval(x)
-    if x ~= params then
-        params:copy(x)
+function feval(p)
+    if p ~= params then
+        params:copy(p)
     end
     grad_params:zero()
 
-    local timer = torch.Timer()
-    x, spk_labels, weights = unpack(loader:next_spk())
-    diag_weights = torch.diag(weights):float()
+    -- local timer = torch.Timer()
+    -- x, spk_labels, weights = unpack(loader:next_spk())
+    -- diag_weights = torch.diag(weights):float()
 
-    if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
-    if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
-    if opt.type == 'cuda' then diag_weights = diag_weights:float():cuda() end -- Ship to GPU
+    -- if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+    -- if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
+        -- This was taking 0.03 seconds for some reason (X only .007 even though it's bigger)
+    -- if opt.type == 'cuda' then diag_weights = diag_weights:cuda() end -- Ship to GPU
 
     pred   = cnn:forward(x)
-    -- print ('Time 1: ', timer:time().real)
     num_per_batch = pred:size()[1] / opt.batch_size
     batch_spk_labels = torch.Tensor(pred:size()[1])
     mean_sum_batch = 0
@@ -172,9 +179,12 @@ function feval(x)
     local loss = criterion:forward(pred, batch_spk_labels)
 
     doutput = criterion:backward(pred, batch_spk_labels):float()
-    if opt.type == 'cuda' then doutput = doutput:float():cuda() end
+    -- if opt.type == 'cuda' then doutput = doutput:float():cuda() end
     doutput = diag_weights * doutput
+    if opt.type == 'cuda' then doutput = doutput:float():cuda() end
     cnn:backward(x, doutput)
+    -- print ('Time 8: ', timer:time().real)
+    -- print ('')
 
     return loss, grad_params
 end
