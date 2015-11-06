@@ -21,7 +21,7 @@ cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.99,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
-cmd:option('-batch_size', 1,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 2,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
@@ -124,19 +124,7 @@ function heat_plot(image)
     debug.debug()
 end
 
-x, spk_labels = unpack(loader:next_spk())
-if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
-energy = dummy_cnn:forward(x)
-weights = energy / energy:max()
-threshold = weights:mean() - weights:std()/2
-weights:apply(function(i)
-    if i < threshold then
-        return 0
-    else
-        return 1
-    end
-end)
-diag_weights = torch.diag(weights:float()):cuda() -- Diag only works on float
+loader:setup_weights(dummy_cnn)
 
 local mean_sum = 0
 local plot_time
@@ -147,8 +135,11 @@ function feval(x)
     grad_params:zero()
 
     local timer = torch.Timer()
-    x, spk_labels = unpack(loader:next_spk())
+    x, spk_labels, weights = unpack(loader:next_spk())
+    diag_weights = torch.diag(weights:float()):float()
+
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+    if opt.type == 'cuda' then diag_weights = diag_weights:float():cuda() end -- Ship to GPU
 
     pred   = cnn:forward(x)
     -- print ('Time 1: ', timer:time().real)
@@ -159,8 +150,12 @@ function feval(x)
         for n=1, num_per_batch do
             batch_spk_labels[(b-1) * num_per_batch + n] = spk_labels[b]
         end
-        probabilities = torch.exp(pred[{{1,b*num_per_batch},spk_labels[b]}])
-        relevant = torch.cmul(weights, probabilities):float()
+
+        -- Take the mean of the proabilities in the windows we care about
+        sidx, eidx = (b-1)*num_per_batch + 1, b*num_per_batch
+        probabilities = torch.exp(pred[{{sidx, eidx}, spk_labels[b]}])
+        relevant = torch.cmul(weights[{{sidx,eidx}}], probabilities):float()
+
         relevant = relevant:index(1, torch.squeeze(torch.nonzero(relevant)))
         mean_sum_batch = mean_sum_batch + torch.mean(relevant)
     end
@@ -173,34 +168,10 @@ function feval(x)
 
     if opt.type == 'cuda' then batch_spk_labels = batch_spk_labels:float():cuda() end -- Ship to GPU
     local loss = criterion:forward(pred, batch_spk_labels)
-    -- print ('Time 3: ', timer:time().real)
-
-    -- energy = dummy_cnn:forward(x)
-    -- print ('Time 2: ', timer:time().real)
-    -- weights = energy / energy:max()
-
-    -- threshold = 0.8
-    -- correct_vector = torch.Tensor(nspeakers):fill(-100)
-    -- correct_vector[spk_class] = 0
-    -- c = 0
-    -- tot_prob = 0
-    -- print (spk_class)
-
-    -- for b=1, batch_size do
-        -- if weights[b] < threshold then
-            -- pred[b] = correct_vector
-        -- else
-            -- c = c + 1
-            -- tot_prob = tot_prob + torch.exp(pred[{b,spk_class}])
-        -- end
-    -- end
-    -- print ('Time 3: ', timer:time().real)
-    -- print ('mean prob for thresholding: ', tot_prob / c)
-
 
     doutput = criterion:backward(pred, batch_spk_labels)
-    doutput = diag_weights * doutput
-    cnn:backward(x, doutput)
+    doutput = diag_weights * doutput:float()
+    cnn:backward(x, doutput:double())
 
     return loss, grad_params
 end

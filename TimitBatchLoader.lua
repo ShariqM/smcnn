@@ -13,6 +13,7 @@ function TimitBatchLoader.create(cqt_features, total_tlength, batch_size)
     self.cqt_features = cqt_features
     self.batch_size = batch_size
     self.total_tlength = total_tlength
+    self.weights = -1
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
     -- data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
@@ -102,20 +103,56 @@ function TimitBatchLoader:next_batch_c()
            self.spk_batches, is_new_batch}
 end
 
+function TimitBatchLoader:get_energy(cnn, idx)
+    test_batch = torch.Tensor(1, 1, self.total_tlength, self.cqt_features)
+    test_batch[{{},{},{},{}}] = self.data[idx]
+    return dummy_cnn:forward(test_batch)
+end
+
+function TimitBatchLoader:setup_weights(dummy_cnn)
+    energy = self:get_energy(cnn, 1) -- Arbitrary index
+    self.weights = torch.Tensor(self.num_examples, energy:size()[1])
+    for i=1, self.num_examples do
+        energy = self:get_energy(cnn, i)
+        weight = energy / energy:max()
+        threshold = weight:mean() - weight:std()/2
+
+        weight:apply(function(i)
+            if i < threshold then
+                return 0
+            else
+                return 1
+            end
+        end)
+
+        self.weights[i] = weight
+    end
+end
+
 function TimitBatchLoader:next_spk()
+    if self.weights == -1 then
+        error('Setup weights before using next_spk())')
+    end
+
     data_batch = torch.Tensor(self.batch_size, 1, self.total_tlength, self.cqt_features)
     spk_labels = torch.Tensor(self.batch_size)
+    w_size     = self.weights:size()[2]
+    weights    = torch.Tensor(self.batch_size * w_size)
+
+    -- g = 1
     for i=1, self.batch_size do
         j = i + 2
         for idx=1, self.num_examples do
             if self.spk_class[idx] == j then
                 data_batch[{i,{},{},{}}] = self.data[idx]
                 spk_labels[i] = self.spk_class[idx]
+                weights[{{(i-1)*w_size + 1, i*w_size}}] = self.weights[idx]
+                -- g = g + 1
                 break
             end
         end
     end
-    return {data_batch, spk_labels}
+    return {data_batch, spk_labels, weights}
 end
 
 return TimitBatchLoader
