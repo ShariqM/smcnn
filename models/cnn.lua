@@ -39,7 +39,7 @@ end
 
 function CNN.cnn(nspeakers, dummy)
     nchannels  = {[0]=1,4,16, 64, nspeakers}
-    filt_sizes = {{5,8}, {5,2}, {1, 2}, {1, 1}}
+    filt_sizes = {{5,8}, {7,2}, {1, 2}, {1, 2}}
     layers = {[0] = nn.Identity()()}
     div = 1
 

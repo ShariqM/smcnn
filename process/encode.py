@@ -77,16 +77,19 @@ for i, fname in zip(range(len(fnames)), fnames):
 
     if s_tr_j < train_prop:
         # trainset[tr_j] = data[:,(idx*FP):((idx+1)*FP)].T
-        tr_spk_label[tr_j] = spi + 1 # Ugh lua indexing
-        tr_spk_to_idx[spi][s_tr_j] = tr_j
-        print (spi + 1)
+
+        # + 1 for Lua indexing
+        tr_spk_label[tr_j] = spi + 1
+        tr_spk_to_idx[spi][s_tr_j] = tr_j + 1
 
         sent_idx[mfilename] = (s_tr_j + 1, s_te_j)
         tr_j = tr_j + 1
     else:
         # testset[te_j] = data[:,(idx*FP):((idx+1)*FP)].T
-        te_spk_label[te_j] = spi + 1 # Ugh lua indexing
-        te_spk_to_idx[spi][s_te_j] = te_j
+
+        # + 1 for Lua indexing
+        te_spk_label[te_j] = spi + 1
+        te_spk_to_idx[spi][s_te_j] = te_j + 1
 
         sent_idx[mfilename] = (s_tr_j, s_te_j + 1)
         te_j = te_j + 1
@@ -120,10 +123,10 @@ for i, fname in zip(range(len(fnames)), fnames):
 
 print (tr_j, te_j)
 # print (nspeakers)
-io.savemat('timit/TRAIN/process/DR1_trainset.mat',  {'X':trainset})
-io.savemat('timit/TRAIN/process/DR1_testset.mat',   {'X':testset})
-io.savemat('timit/TRAIN/process/DR1_tr_spk.mat', {'X':tr_spk_label})
-io.savemat('timit/TRAIN/process/DR1_te_spk.mat', {'X':te_spk_label})
+# io.savemat('timit/TRAIN/process/DR1_trainset.mat',  {'X':trainset})
+# io.savemat('timit/TRAIN/process/DR1_testset.mat',   {'X':testset})
+# io.savemat('timit/TRAIN/process/DR1_tr_spk.mat', {'X':tr_spk_label})
+# io.savemat('timit/TRAIN/process/DR1_te_spk.mat', {'X':te_spk_label})
 io.savemat('timit/TRAIN/process/DR1_tr_spk_to_idx.mat', {'X':tr_spk_to_idx})
 io.savemat('timit/TRAIN/process/DR1_te_spk_to_idx.mat', {'X':te_spk_to_idx})
 # io.savemat('timit/TRAIN/process/DR1_phn_%d.mat' % i, {'X':phn_label})

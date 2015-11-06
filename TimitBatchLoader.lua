@@ -48,6 +48,7 @@ function TimitBatchLoader.create(cqt_features, timepoints, batch_size)
 
     -- self.nphonemes = 61
     self.nspeakers = self.tr_spk_label:max()
+    -- self.nspeakers = 8 -- HACK Let's start with 32
 
     self.batch_loading = false
 
@@ -151,7 +152,7 @@ function TimitBatchLoader:setup_weights(dummy_cnn, cuda)
         if i <= self.tr_examples then
             self.tr_weights[i] = weight
         else
-            self.tr_weights[i - self.tr_examples ] = weight
+            self.te_weights[i - self.tr_examples] = weight
         end
     end
     self.weights_setup = true
@@ -160,13 +161,14 @@ end
 function TimitBatchLoader:next_idx(train)
     if self.batch_loading == false then
         self.speaker_order = torch.randperm(self.nspeakers)
-        self.SAs_picked = {}
+        self.batch_loading = true
     end
 
     spk = self.speaker_order[1]
-    self.speaker_order:narrow(1, 2, self.speaker_order:size()[1] - 1)
-    if self.speaker_order:size() == 0 then
+    if self.speaker_order:size()[1] == 1 then
         self.speaker_order = torch.randperm(self.nspeakers)
+    else
+        self.speaker_order = self.speaker_order:narrow(1, 2, self.speaker_order:size()[1] - 1)
     end
 
     if train then
@@ -198,14 +200,13 @@ function TimitBatchLoader:next_batch(train)
 
     for i=1, self.batch_size do
         idx = self:next_idx(train)
-        print ('idx', idx)
-
         data_batch[{i,{},{},{}}] = data[idx]
         spk_batch[i] = spk_label[idx]
-        print ('spk', spk_label[idx])
+        -- print (string.format("IDX=%d, SPK=%d", idx, spk_label[idx]))
         weight_batch[{{(i-1)*w_size + 1, i*w_size}}] = weights[idx]
     end
-    self.batch_loading = true
+    -- print ('')
+    self.batch_loading = false
 
     return {data_batch, spk_batch, weight_batch}
 end

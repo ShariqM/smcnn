@@ -19,14 +19,15 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',8e-3,'learning rate')
+cmd:option('-learning_rate',4e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
-cmd:option('-batch_size', 1,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 38,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
+cmd:option('-test_every',2000,'Run against the test set every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-init_from', '', 'initialize network parameters from checkpoint at this path')
@@ -42,7 +43,7 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
-plot_threshold = 188000
+plot_threshold = 18800993289148120
 cqt_features = 175
 timepoints = 1024
 local loader = TimitBatchLoader.create(cqt_features, timepoints, opt.batch_size)
@@ -81,8 +82,8 @@ end
 
 function heat_plot(image)
     heatmap = torch.Tensor(cqt_features, timepoints)
-    cqt_size = 25
-    time_size = 32
+    cqt_size = 35
+    time_size = 64
     local g = 1
     for t=1, timepoints/time_size do
         for c=1, cqt_features/cqt_size do
@@ -131,6 +132,7 @@ loader:setup_weights(dummy_cnn, opt.type == 'cuda')
 
 local mean_sum = 0
 local plot_time
+local train = true
 function feval(p)
     if p ~= params then
         params:copy(p)
@@ -138,7 +140,7 @@ function feval(p)
     grad_params:zero()
 
     local timer = torch.Timer()
-    x, spk_labels, weights = unpack(loader:next_batch(true))
+    x, spk_labels, weights = unpack(loader:next_batch(train))
     diag_weights = torch.diag(weights):float()
 
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
@@ -158,12 +160,19 @@ function feval(p)
         -- Take the mean of the proabilities in the windows we care about
         sidx, eidx = (b-1)*num_per_batch + 1, b*num_per_batch
         probabilities = torch.exp(pred[{{sidx, eidx}, spk_labels[b]}])
+        -- if train == false then
+            -- print (weights)
+        -- end
         relevant = torch.cmul(weights[{{sidx,eidx}}], probabilities):float()
 
         relevant = relevant:index(1, torch.squeeze(torch.nonzero(relevant)))
         mean_sum_batch = mean_sum_batch + torch.mean(relevant)
     end
     mean_sum = mean_sum + mean_sum_batch / opt.batch_size
+
+    if not train then -- No gradient
+        return -1
+    end
 
     if plot_time == true then
         print ('show')
@@ -218,6 +227,18 @@ for i = 1, iterations do
     if i % opt.print_every == 0 then
         -- print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
         print(string.format("%d/%d (epoch %.3f), mean=%.2f, train_loss = %.3f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, mean_sum / opt.print_every, train_loss, grad_params:norm(), time))
+        train_loss = 0
+        mean_sum = 0
+    end
+
+    if i % opt.test_every == 0 then
+        mean_sum = 0
+        train = false
+        for k=1,50 do
+            feval(params)
+        end
+        train = true
+        print(string.format("[TEST RESULT] mean=%.2f", mean_sum / 50))
         train_loss = 0
         mean_sum = 0
     end
