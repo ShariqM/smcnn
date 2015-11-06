@@ -21,7 +21,7 @@ cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.99,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
-cmd:option('-batch_size', 2,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 4,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
@@ -40,7 +40,7 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
-plot_threshold = 4000
+plot_threshold = 8000
 cqt_features = 175
 total_tlength = 1024
 local loader = TimitBatchLoader.create(cqt_features, total_tlength, opt.batch_size)
@@ -51,6 +51,7 @@ if string.len(opt.init_from) > 0 then
     print('loading an Network from checkpoint ' .. opt.init_from)
     local checkpoint = torch.load(opt.init_from)
     cnn = checkpoint.model
+    dummy_cnn = checkpoint.dummy_model
     init_params = false
 else
     cnn       = CNN.cnn2(nspeakers, false)
@@ -221,7 +222,7 @@ for i = 1, iterations do
         print('saving checkpoint to ' .. savefile)
         checkpoint = {}
         checkpoint.model= cnn
-        checkpoint.batch_size = batch_size
+        checkpoint.dummy_model = dummy_cnn
         torch.save(savefile, checkpoint)
     end
 
