@@ -17,11 +17,11 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',1e-2,'learning rate')
-cmd:option('-learning_rate_decay',0.99,'learning rate decay')
+cmd:option('-learning_rate',4e-2,'learning rate')
+cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
-cmd:option('-batch_size', 4,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
@@ -54,8 +54,8 @@ if string.len(opt.init_from) > 0 then
     dummy_cnn = checkpoint.dummy_model
     init_params = false
 else
-    cnn       = CNN.cnn2(nspeakers, false)
-    dummy_cnn = CNN.cnn2(nspeakers, true)
+    cnn       = CNN.cnn(nspeakers, false)
+    dummy_cnn = CNN.cnn(nspeakers, true)
 end
 criterion = nn.ClassNLLCriterion()
 
@@ -212,7 +212,7 @@ for i = 1, iterations do
     -- if true or i == 1 or i % opt.print_every == 0 then
     if i % opt.print_every == 0 then
         -- print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
-        print(string.format("%d/%d (epoch %.3f), mean=%.2f, train_loss = %6.8f, grad norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, mean_sum / opt.print_every, train_loss, grad_params:norm(), time))
+        print(string.format("%d/%d (epoch %.3f), mean=%.2f, train_loss = %.3f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, mean_sum / opt.print_every, train_loss, grad_params:norm(), time))
         train_loss = 0
         mean_sum = 0
     end

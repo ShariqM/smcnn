@@ -22,26 +22,24 @@ function get_gModule(input, last, dummy)
     return nn.gModule({input}, {out})
 end
 
-function CNN.cnn(nspeakers, batch_size)
+function CNN.cnn1(nspeakers, dummy)
     local x = nn.Identity()()
     filt_sizes = {{25,16}}
     div = 1
-    local conv1 = nn.SpatialConvolution(1, 8, filt_sizes[1][1], filt_sizes[1][2],
+    local conv1 = nn.SpatialConvolution(1, nspeakers, filt_sizes[1][1], filt_sizes[1][2],
                                         filt_sizes[1][1]/div, filt_sizes[1][2]/div)(x)
     local relu1 = nn.ReLU()(conv1)
 
     g = -1
     local permute = nn.Transpose({2,3},{3,4})(relu1)
     local view = nn.View(g, nspeakers)(permute)
-    local logsoft = nn.LogSoftMax()(view)
 
-    return {nn.gModule({x},{logsoft}), batch_size}
+    return get_gModule(x, view, dummy)
 end
 
-
-function CNN.cnn2(nspeakers, dummy)
-    nchannels  = {[0]=1,4,16,nspeakers}
-    filt_sizes = {{5,8}, {5,2}, {1, 2}}
+function CNN.cnn(nspeakers, dummy)
+    nchannels  = {[0]=1,4,16, 64, nspeakers}
+    filt_sizes = {{5,8}, {5,2}, {1, 2}, {1, 1}}
     layers = {[0] = nn.Identity()()}
     div = 1
 
