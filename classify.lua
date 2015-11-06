@@ -6,6 +6,8 @@ require 'lfs'
 require 'gnuplot'
 require 'helpers'
 
+matio = require 'matio'
+matio.use_lua_strings = true
 local model_utils=require 'model_utils'
 local CNN = require 'models.cnn'
 local TimitBatchLoader = require 'TimitBatchLoader'
@@ -127,13 +129,6 @@ end
 
 loader:setup_weights(dummy_cnn, opt.type == 'cuda')
 
-x, spk_labels, weights = unpack(loader:next_spk())
-diag_weights = torch.diag(weights):float()
-
-if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
-if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
-
-
 local mean_sum = 0
 local plot_time
 function feval(p)
@@ -142,12 +137,12 @@ function feval(p)
     end
     grad_params:zero()
 
-    -- local timer = torch.Timer()
-    -- x, spk_labels, weights = unpack(loader:next_spk())
-    -- diag_weights = torch.diag(weights):float()
+    local timer = torch.Timer()
+    x, spk_labels, weights = unpack(loader:next_batch(true))
+    diag_weights = torch.diag(weights):float()
 
-    -- if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
-    -- if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
+    if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+    if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
         -- This was taking 0.03 seconds for some reason (X only .007 even though it's bigger)
     -- if opt.type == 'cuda' then diag_weights = diag_weights:cuda() end -- Ship to GPU
 

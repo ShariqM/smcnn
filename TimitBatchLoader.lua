@@ -12,38 +12,42 @@ function TimitBatchLoader.create(cqt_features, timepoints, batch_size)
     self.cqt_features = cqt_features
     self.batch_size = batch_size
     self.timepoints = timepoints
-    self.weights = -1
+    self.weights_setup = false
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
     -- data = matio.load(string.format('timit/TRAIN/process/DR1_data_%d.mat', self.num_examples))['X']
     -- phn  = matio.load(string.format('timit/TRAIN/process/DR1_phn_%d.mat', self.num_examples))['X']
     -- spk = matio.load(string.format('timit/TRAIN/process/DR1_spk_%d.mat', self.num_examples))['X'][1]
 
-    trainset = matio.load('timit/TRAIN/process/DR1_trainset.mat')['X']
-    testset  = matio.load('timit/TRAIN/process/DR1_testset.mat')['X']
-    tr_spk = matio.load('timit/TRAIN/process/DR1_tr_spk.mat')['X'][1]
-    te_spk = matio.load('timit/TRAIN/process/DR1_te_spk.mat')['X'][1]
+    -- trainset = matio.load('timit/TRAIN/process/DR1_trainset.mat')['X']
+    -- testset  = matio.load('timit/TRAIN/process/DR1_testset.mat')['X']
+    -- tr_spk = matio.load('timit/TRAIN/process/DR1_tr_spk.mat')['X'][1]
+    -- te_spk = matio.load('timit/TRAIN/process/DR1_te_spk.mat')['X'][1]
+    -- tr_spk_to_idx = matio.load('timit/TRAIN/process/DR1_tr_spk_to_idx.mat')['X']
+    -- te_spk_to_idx = matio.load('timit/TRAIN/process/DR1_te_spk_to_idx.mat')['X']
 
-    torch.save('timit/t7/DR1_trainset.t7', trainset)
-    torch.save('timit/t7/DR1_testset.t7',  testset)
-    torch.save('timit/t7/DR1_tr_spk.t7',   tr_spk)
-    torch.save('timit/t7/DR1_te_spk.t7',   te_spk)
+    -- torch.save('timit/t7/DR1_trainset.t7', trainset)
+    -- torch.save('timit/t7/DR1_testset.t7',  testset)
+    -- torch.save('timit/t7/DR1_tr_spk.t7',   tr_spk)
+    -- torch.save('timit/t7/DR1_te_spk.t7',   te_spk)
+    -- torch.save('timit/t7/DR1_tr_spk_to_idx.t7',   tr_spk_to_idx)
+    -- torch.save('timit/t7/DR1_te_spk_to_idx.t7',   te_spk_to_idx)
 
     trainset = torch.load('timit/t7/DR1_trainset.t7')
     testset  = torch.load('timit/t7/DR1_testset.t7')
-    tr_spk   = torch.load('timit/t7/DR1_tr_spk.t7')
-    te_spk   = torch.load('timit/t7/DR1_te_spk.t7')
-
-    self.tr_examples = tr_spk:size()[1]
-    self.te_examples = te_spk:size()[1]
-
     self.trainset = trainset / trainset:mean()
     self.testset  = testset  / trainset:mean() -- trainset mean I guess?
-    self.tr_spk_label = tr_spk
-    self.te_spk_label = te_spk
 
-    self.nphonemes = 61
-    self.nspeakers = tr_spk:max()
+    self.tr_spk_label  = torch.load('timit/t7/DR1_tr_spk.t7')
+    self.te_spk_label  = torch.load('timit/t7/DR1_te_spk.t7')
+    self.tr_spk_to_idx = torch.load('timit/t7/DR1_tr_spk_to_idx.t7')
+    self.te_spk_to_idx = torch.load('timit/t7/DR1_te_spk_to_idx.t7')
+
+    self.tr_examples = self.tr_spk_label:size()[1]
+    self.te_examples = self.te_spk_label:size()[1]
+
+    -- self.nphonemes = 61
+    self.nspeakers = self.tr_spk_label:max()
 
     self.batch_loading = false
 
@@ -62,7 +66,7 @@ function TimitBatchLoader:init_seq(seq_length)
     self.evaluated_batches = 1
 end
 
-function TimitBatchLoader:next_batch()
+function TimitBatchLoader:next_seq_batch()
     error("Broken")
     is_new_batch = false
     if self.current_batch % self.batches == 0 then
@@ -84,7 +88,7 @@ function TimitBatchLoader:next_batch()
     return self.x_batches[{self.current_batch,{},{},{}}], is_new_batch
 end
 
-function TimitBatchLoader:next_batch_c()
+function TimitBatchLoader:next_seq_batch_c()
     error("Broken")
     is_new_batch = false
     if self.current_batch % self.batches == 0 then
@@ -129,7 +133,7 @@ end
 function TimitBatchLoader:setup_weights(dummy_cnn, cuda)
     energy = self:get_energy(cnn, cuda, 1) -- Arbitrary index
     self.tr_weights = torch.Tensor(self.tr_examples, energy:size()[1])
-    self.te_weights = torch.Tensor(self.te_exmaples, energy:size()[1])
+    self.te_weights = torch.Tensor(self.te_examples, energy:size()[1])
 
     for i=1, self.tr_examples + self.te_examples do
         energy = self:get_energy(cnn, cuda, i)
@@ -150,46 +154,58 @@ function TimitBatchLoader:setup_weights(dummy_cnn, cuda)
             self.tr_weights[i - self.tr_examples ] = weight
         end
     end
+    self.weights_setup = true
 end
 
-function TimitBatchLoader
+function TimitBatchLoader:next_idx(train)
     if self.batch_loading == false then
-        self.speakers_picked = {}
+        self.speaker_order = torch.randperm(self.nspeakers)
         self.SAs_picked = {}
     end
 
-    spk =
-    while
+    spk = self.speaker_order[1]
+    self.speaker_order:narrow(1, 2, self.speaker_order:size()[1] - 1)
+    if self.speaker_order:size() == 0 then
+        self.speaker_order = torch.randperm(self.nspeakers)
+    end
 
+    if train then
+        -- Maybe I should track the sentences too but whatever for now.
+        indexes = self.tr_spk_to_idx[spk]
+    else
+        indexes = self.te_spk_to_idx[spk]
+    end
 
+    metaidx = torch.random(1, indexes:size()[1])
+    return indexes[metaidx]
+end
 
-function TimitBatchLoader:next_spk(tr)
-    if self.weights == -1 then
+function TimitBatchLoader:next_batch(train)
+    if self.weights_setup == false then
         error('Setup weights before using next_spk())')
     end
 
     data_batch = torch.Tensor(self.batch_size, 1, self.timepoints, self.cqt_features)
     spk_batch  = torch.Tensor(self.batch_size)
     w_size     = self.tr_weights:size()[2]
-    weights    = torch.Tensor(self.batch_size * w_size)
+    weight_batch = torch.Tensor(self.batch_size * w_size)
 
-    if tr then
+    if train then
         data, spk_label, weights = self.trainset, self.tr_spk_label, self.tr_weights
     else
         data, spk_label, weights = self.testset, self.te_spk_label, self.te_weights
     end
 
     for i=1, self.batch_size do
-        spk = next_speaker()
-        idx = next_data_idx(tr, spk)
+        idx = self:next_idx(train)
 
         data_batch[{i,{},{},{}}] = data[idx]
         spk_batch[i] = spk_label[idx]
-        weights[{{(i-1)*w_size + 1, i*w_size}}] = weights[idx]
+        weight_batch[{{(i-1)*w_size + 1, i*w_size}}] = weights[idx]
     end
     self.batch_loading = true
 
-    return {data_batch, spk_batch, weights}
+    return {data_batch, spk_batch, weight_batch}
 end
 
 return TimitBatchLoader

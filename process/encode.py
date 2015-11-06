@@ -40,10 +40,8 @@ total_examples = 380
 
 
 train_prop = 8 # Number between (1-10) (10 sentences per speaker
-train_per  = train_prop/SA_per_spk
-test_per  = 1 - train_per
-train_examples = total_examples * train_per
-test_examples  = total_examples * test_per
+train_examples = train_prop * nspeakers
+test_examples  = (SA_per_spk - train_prop) * nspeakers
 
 trainset = np.zeros((train_examples, timepoints, cqt_features))
 testset  = np.zeros((test_examples,  timepoints, cqt_features))
@@ -55,7 +53,9 @@ phoneme_time = False
 tr_spk_label = np.zeros(train_examples)
 te_spk_label = np.zeros(test_examples)
 
-spk_label = np.zeros(train_examples)
+tr_spk_to_idx = np.zeros((nspeakers, train_prop))
+te_spk_to_idx = np.zeros((nspeakers, SA_per_spk - train_prop))
+
 spkset = set()
 
 tr_j = 0
@@ -63,6 +63,7 @@ te_j = 0
 for i, fname in zip(range(len(fnames)), fnames):
     if i % 20 == 0:
         print 'INDEX=%d/%d' % (i, total_examples)
+
     path = fname.split('/')
     dialect, speaker = path[2], path[3]
     spkset.add(speaker)
@@ -70,18 +71,24 @@ for i, fname in zip(range(len(fnames)), fnames):
     assert spi != -1
 
     mfilename = 'timit/TRAIN/%s_%s.mat' % (dialect, speaker)
-    tr_j, te_j = sent_idx[mfilename]
-    idx = tr_j + te_j
+    s_tr_j, s_te_j = sent_idx[mfilename]
+    idx = s_tr_j + s_te_j
     data = io.loadmat(mfilename)['data'][0][0][0]
 
-    if tr_j == train_prop:
+    if s_tr_j < train_prop:
         trainset[tr_j] = data[:,(idx*FP):((idx+1)*FP)].T
-        tr_spk_label[tr_j] = spi + 1 # Ugh lua indexing
-        sent_idx[mfilename] = (tr_j + 1, te_j)
+        tr_spk_label[s_tr_j] = spi + 1 # Ugh lua indexing
+        tr_spk_to_idx[spi][s_tr_j] = tr_j
+
+        sent_idx[mfilename] = (s_tr_j + 1, s_te_j)
+        tr_j = tr_j + 1
     else:
         testset[te_j] = data[:,(idx*FP):((idx+1)*FP)].T
-        te_spk_label[te_j] = spi + 1 # Ugh lua indexing
-        sent_idx[mfilename] = (tr_j, te_j + 1)
+        te_spk_label[s_te_j] = spi + 1 # Ugh lua indexing
+        te_spk_to_idx[spi][s_te_j] = te_j
+
+        sent_idx[mfilename] = (s_tr_j, s_te_j + 1)
+        te_j = te_j + 1
 
     if not phoneme_time:
         continue
@@ -110,11 +117,14 @@ for i, fname in zip(range(len(fnames)), fnames):
 
     # f.close()
 
+print (tr_j, te_j)
 # print (nspeakers)
 io.savemat('timit/TRAIN/process/DR1_trainset.mat',  {'X':trainset})
 io.savemat('timit/TRAIN/process/DR1_testset.mat',   {'X':testset})
-io.savemat('timit/TRAIN/process/DR1_ts_spk_%d.mat', {'X':tr_spk_label})
-io.savemat('timit/TRAIN/process/DR1_te_spk_%d.mat', {'X':te_spk_label})
+io.savemat('timit/TRAIN/process/DR1_tr_spk.mat', {'X':tr_spk_label})
+io.savemat('timit/TRAIN/process/DR1_te_spk.mat', {'X':te_spk_label})
+io.savemat('timit/TRAIN/process/DR1_tr_spk_to_idx.mat', {'X':tr_spk_to_idx})
+io.savemat('timit/TRAIN/process/DR1_te_spk_to_idx.mat', {'X':te_spk_to_idx})
 # io.savemat('timit/TRAIN/process/DR1_phn_%d.mat' % i, {'X':phn_label})
 
 # speakers = list(spkset)
