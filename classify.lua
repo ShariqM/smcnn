@@ -15,7 +15,7 @@ cmd:text()
 cmd:text('Train a speech classificaiton model')
 cmd:text()
 cmd:text('Options')
-cmd:option('-type', 'double', 'type: double | float | cuda')
+cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
 cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.99,'learning rate decay')
@@ -61,7 +61,7 @@ criterion = nn.ClassNLLCriterion()
 -- CUDA
 if opt.type == 'cuda' then
    cnn:cuda()
-   dummy_cnn:cuda()
+   -- dummy_cnn:cuda()
    criterion:cuda()
 end
 
@@ -124,7 +124,7 @@ function heat_plot(image)
     debug.debug()
 end
 
-loader:setup_weights(dummy_cnn)
+loader:setup_weights(dummy_cnn, opt.type == 'cuda')
 
 local mean_sum = 0
 local plot_time
@@ -136,9 +136,10 @@ function feval(x)
 
     local timer = torch.Timer()
     x, spk_labels, weights = unpack(loader:next_spk())
-    diag_weights = torch.diag(weights:float()):float()
+    diag_weights = torch.diag(weights):float()
 
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+    if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
     if opt.type == 'cuda' then diag_weights = diag_weights:float():cuda() end -- Ship to GPU
 
     pred   = cnn:forward(x)
@@ -169,9 +170,10 @@ function feval(x)
     if opt.type == 'cuda' then batch_spk_labels = batch_spk_labels:float():cuda() end -- Ship to GPU
     local loss = criterion:forward(pred, batch_spk_labels)
 
-    doutput = criterion:backward(pred, batch_spk_labels)
-    doutput = diag_weights * doutput:float()
-    cnn:backward(x, doutput:double())
+    doutput = criterion:backward(pred, batch_spk_labels):float()
+    if opt.type == 'cuda' then doutput = doutput:float():cuda() end
+    doutput = diag_weights * doutput
+    cnn:backward(x, doutput)
 
     return loss, grad_params
 end

@@ -103,17 +103,19 @@ function TimitBatchLoader:next_batch_c()
            self.spk_batches, is_new_batch}
 end
 
-function TimitBatchLoader:get_energy(cnn, idx)
+function TimitBatchLoader:get_energy(cnn, cuda, idx)
     test_batch = torch.Tensor(1, 1, self.total_tlength, self.cqt_features)
     test_batch[{{},{},{},{}}] = self.data[idx]
+    -- if cuda then test_batch = test_batch:float():cuda() end
     return dummy_cnn:forward(test_batch)
 end
 
-function TimitBatchLoader:setup_weights(dummy_cnn)
-    energy = self:get_energy(cnn, 1) -- Arbitrary index
+function TimitBatchLoader:setup_weights(dummy_cnn, cuda)
+    energy = self:get_energy(cnn, cuda, 1) -- Arbitrary index
     self.weights = torch.Tensor(self.num_examples, energy:size()[1])
+    -- if cuda then self.weights = self.weights:float():cuda() end
     for i=1, self.num_examples do
-        energy = self:get_energy(cnn, i)
+        energy = self:get_energy(cnn, cuda, i)
         weight = energy / energy:max()
         threshold = weight:mean() - weight:std()/2
 
