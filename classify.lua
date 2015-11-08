@@ -19,12 +19,12 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',4e-2,'learning rate')
-cmd:option('-learning_rate_decay',0.97,'learning rate decay')
+cmd:option('-learning_rate',5e-3,'learning rate')
+cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
-cmd:option('-batch_size', 38,'number of sequences to train on in parallel')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
+cmd:option('-batch_size', 2,'number of sequences to train on in parallel')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
 cmd:option('-test_every',2000,'Run against the test set every $1 iterations')
@@ -141,12 +141,16 @@ function feval(p)
 
     local timer = torch.Timer()
     x, spk_labels, weights = unpack(loader:next_batch(train))
-    diag_weights = torch.diag(weights):float()
+    block_weights = torch.expand(torch.reshape(weights, weights:size()[1], 1), weights:size()[1], nspeakers)
+
+    -- print (string.format("Time 1: %.3f", timer:time().real))
 
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
     if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
+    -- print (string.format("Time 2: %.3f", timer:time().real))
         -- This was taking 0.03 seconds for some reason (X only .007 even though it's bigger)
-    -- if opt.type == 'cuda' then diag_weights = diag_weights:cuda() end -- Ship to GPU
+    if opt.type == 'cuda' then block_weights = block_weights:cuda() end -- Ship to GPU
+    -- print (string.format("Time 2.5: %.3f", timer:time().real))
 
     pred   = cnn:forward(x)
     num_per_batch = pred:size()[1] / opt.batch_size
@@ -168,6 +172,7 @@ function feval(p)
         relevant = relevant:index(1, torch.squeeze(torch.nonzero(relevant)))
         mean_sum_batch = mean_sum_batch + torch.mean(relevant)
     end
+    -- print (string.format("Time 3: %.3f", timer:time().real))
     mean_sum = mean_sum + mean_sum_batch / opt.batch_size
 
     if not train then -- No gradient
@@ -183,9 +188,11 @@ function feval(p)
     local loss = criterion:forward(pred, batch_spk_labels)
 
     doutput = criterion:backward(pred, batch_spk_labels):float()
-    -- if opt.type == 'cuda' then doutput = doutput:float():cuda() end
-    doutput = diag_weights * doutput
     if opt.type == 'cuda' then doutput = doutput:float():cuda() end
+    -- print (string.format("Time 4: %.3f", timer:time().real))
+    doutput = torch.cmul(block_weights, doutput)
+    -- print (string.format("Time 5: %.3f", timer:time().real))
+    -- print (string.format("Time 6: %.3f", timer:time().real))
     cnn:backward(x, doutput)
     -- print ('Time 8: ', timer:time().real)
     -- print ('')
@@ -250,6 +257,7 @@ for i = 1, iterations do
         checkpoint.model= cnn
         checkpoint.dummy_model = dummy_cnn
         torch.save(savefile, checkpoint)
+        print('saved checkpoint to ' .. savefile)
     end
 
 

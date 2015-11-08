@@ -38,15 +38,17 @@ function CNN.cnn1(nspeakers, dummy)
 end
 
 function CNN.cnn(nspeakers, dummy)
-    nchannels  = {[0]=1,4,16, 64, nspeakers}
-    filt_sizes = {{5,8}, {7,2}, {1, 2}, {1, 2}}
+    -- nchannels  = {[0]=1,4,16,nspeakers}
+    -- filt_sizes = {{5,8}, {7,2}, {1, 4}}
+    nchannels    = {[0]=1,8,64,360,nspeakers}
+    filt_sizes   = {{5,8}, {7,2}, {1, 2}, {1,2}}
+    stride_sizes = {{5,2}, {1,2}, {1, 2}, {1,2}}
     layers = {[0] = nn.Identity()()}
-    div = 1
 
     for i=1, #filt_sizes do
         local conv = nn.SpatialConvolution(nchannels[i-1], nchannels[i],
                         filt_sizes[i][1], filt_sizes[i][2],
-                        filt_sizes[i][1]/div, filt_sizes[i][2]/div)(layers[i-1])
+                        stride_sizes[i][1], stride_sizes[i][2])(layers[i-1])
         layers[i] = nn.ReLU()(conv)
     end
 

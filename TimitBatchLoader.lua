@@ -48,7 +48,7 @@ function TimitBatchLoader.create(cqt_features, timepoints, batch_size)
 
     -- self.nphonemes = 61
     self.nspeakers = self.tr_spk_label:max()
-    -- self.nspeakers = 8 -- HACK Let's start with 32
+    self.nspeakers = 8 -- HACK Let's start with 32
 
     self.batch_loading = false
 
