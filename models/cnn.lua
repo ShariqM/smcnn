@@ -37,7 +37,7 @@ function CNN.cnn1(nspeakers, dummy)
     return get_gModule(x, view, dummy)
 end
 
-function CNN.cnn(nspeakers, dummy)
+function CNN.cnn(nspeakers, dropout, dummy)
     -- nchannels  = {[0]=1,4,16,nspeakers}
     -- filt_sizes = {{5,8}, {7,2}, {1, 4}}
     nchannels    = {[0]=1,8,64,360,nspeakers}
@@ -50,6 +50,13 @@ function CNN.cnn(nspeakers, dummy)
                         filt_sizes[i][1], filt_sizes[i][2],
                         stride_sizes[i][1], stride_sizes[i][2])(layers[i-1])
         layers[i] = nn.ReLU()(conv)
+
+        if i == #filt_sizes - 1 then
+            print 'avg pool'
+            layers[i] = nn.SpatialAveragePooling(2,4,2,4)(layers[i])
+        end
+
+      if dropout > 0 then layers[i] = nn.Dropout(dropout)(layers[i]) end -- apply dropout, if any
     end
 
     g = -1

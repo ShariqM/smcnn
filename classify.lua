@@ -19,12 +19,13 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',5e-3,'learning rate')
+cmd:option('-learning_rate',1e-1,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size', 2,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
+cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
 cmd:option('-test_every',2000,'Run against the test set every $1 iterations')
@@ -57,8 +58,8 @@ if string.len(opt.init_from) > 0 then
     dummy_cnn = checkpoint.dummy_model
     init_params = false
 else
-    cnn       = CNN.cnn(nspeakers, false)
-    dummy_cnn = CNN.cnn(nspeakers, true)
+    cnn       = CNN.cnn(nspeakers, opt.dropout, false)
+    dummy_cnn = CNN.cnn(nspeakers, 0, true)
 end
 criterion = nn.ClassNLLCriterion()
 
@@ -148,7 +149,6 @@ function feval(p)
     if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
     if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
     -- print (string.format("Time 2: %.3f", timer:time().real))
-        -- This was taking 0.03 seconds for some reason (X only .007 even though it's bigger)
     if opt.type == 'cuda' then block_weights = block_weights:cuda() end -- Ship to GPU
     -- print (string.format("Time 2.5: %.3f", timer:time().real))
 
@@ -231,9 +231,10 @@ for i = 1, iterations do
     end
 
     -- if true or i == 1 or i % opt.print_every == 0 then
-    if i % opt.print_every == 0 then
+    if i == 1 or i % opt.print_every == 0 then
         -- print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
-        print(string.format("%d/%d (epoch %.3f), mean=%.2f, train_loss = %.3f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, mean_sum / opt.print_every, train_loss, grad_params:norm(), time))
+        print(string.format("%d/%d (epoch %.3f), mean_error=%.5f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, 1 - mean_sum / opt.print_every, grad_params:norm(), time))
+
         train_loss = 0
         mean_sum = 0
     end
@@ -245,7 +246,7 @@ for i = 1, iterations do
             feval(params)
         end
         train = true
-        print(string.format("[TEST RESULT] mean=%.2f", mean_sum / 50))
+        print(string.format("[TEST RESULT] mean_error=%.2f", 1 - (mean_sum / 50)))
         train_loss = 0
         mean_sum = 0
     end
