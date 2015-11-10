@@ -317,4 +317,34 @@ function SpeechBatchLoader:next_grid_batch(train)
     return {data_batch, spk_batch, weight_batch}
 end
 
+function SpeechBatchLoader:get_grid_src(train, src, tgt)
+    assert (src <= self.nspeakers and tgt <= self.nspeakers)
+    -- assert (src ~= tgt)
+
+    if self.weights_setup == false then
+        error('Setup weights before using next_spk())')
+    end
+
+    data_batch = torch.Tensor(1, 1, self.timepoints, self.cqt_features)
+    spk_batch  = torch.Tensor(1)
+    w_size     = self.weights:size()[3]
+    weight_batch = torch.Tensor(w_size)
+
+    spk = src
+    if train then
+        idx = torch.random(1, self.train_last)
+    else
+        idx = torch.random(self.train_last + 1, self.test_last)
+    end
+    rFile = hdf5.open(string.format('grid/s%d/s%d_%d.h5', spk, spk, idx), 'r')
+    data  = rFile:read('/data/X1'):all()
+
+    data_batch[{1,{},{},{}}] = data
+    spk_batch[1] = spk
+    weight_batch[{{1, w_size}}] = self.weights[{spk,idx,{}}]
+
+    rFile:close()
+    return {data_batch, spk_batch, weight_batch}
+end
+
 return SpeechBatchLoader
