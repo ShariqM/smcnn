@@ -344,7 +344,7 @@ function SpeechBatchLoader:get_grid_src(train, src, tgt)
     weight_batch[{{1, w_size}}] = self.weights[{spk,idx,{}}]
 
     rFile:close()
-    return {data_batch, spk_batch, weight_batch}
+    return {data_batch, spk_batch, weight_batch, idx}
 end
 
 return SpeechBatchLoader

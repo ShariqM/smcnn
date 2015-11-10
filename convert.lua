@@ -19,13 +19,13 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',1e1,'learning rate')
+cmd:option('-learning_rate',3e-4,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
-cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
+cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
 cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-init_from', '', 'initialize network parameters from checkpoint at this path')
 opt = cmd:parse(arg)
@@ -108,21 +108,25 @@ local train_loss = 0
 local dInput = torch.Tensor(1, 1, timepoints, cqt_features)
 if opt.type == 'cuda' then dInput = dInput:float():cuda() end
 
-src = 1
-tgt = 2
+src = 2
+tgt = 1
 sz = 50
-x, spk_labels, weights = unpack(loader:get_grid_src(train, src, tgt))
+x, spk_labels, weights , idx= unpack(loader:get_grid_src(true, src, tgt))
+x_orig = x:clone()
 block_weights = torch.expand(torch.reshape(weights, weights:size()[1], 1), weights:size()[1], nspeakers)
 if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
 if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
 if opt.type == 'cuda' then block_weights = block_weights:cuda() end -- Ship to GPU
 
-for i=1, 20000 do
+
+for i=1, 100 do
     _, loss = optim.sgd(feval_transform, x, optim_state)
     if i == 1 then
         print (string.format("%d) Mean Error %.3f Loss: %.3f", i, 1 - mean_sum, loss[1]))
     end
     if i % opt.print_every == 0 then
+        spk = matio.save(string.format('converted/s%d_%d.mat', src, idx), x_orig:float())
+        spk = matio.save(string.format('converted/s%d_%d_to_s%d_%d_i=%d.mat', src, idx, tgt, idx, i), x:float())
         print (x:mean(), params:mean())
         print (string.format("%d) Mean Error %.3f Loss: %.3f", i, 1 - (mean_sum/opt.print_every), loss[1]))
         mean_sum = 0
