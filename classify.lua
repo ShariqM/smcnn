@@ -10,7 +10,7 @@ matio = require 'matio'
 matio.use_lua_strings = true
 local model_utils=require 'model_utils'
 local CNN = require 'models.cnn'
-local TimitBatchLoader = require 'TimitBatchLoader'
+local SpeechBatchLoader = require 'SpeechBatchLoader'
 
 cmd = torch.CmdLine()
 cmd:text()
@@ -19,7 +19,7 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',1e-1,'learning rate')
+cmd:option('-learning_rate',2e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
@@ -28,7 +28,7 @@ cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
-cmd:option('-test_every',2000,'Run against the test set every $1 iterations')
+cmd:option('-test_every',1000,'Run against the test set every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-init_from', '', 'initialize network parameters from checkpoint at this path')
@@ -47,7 +47,7 @@ end
 plot_threshold = 18800993289148120
 cqt_features = 175
 timepoints = 1024
-local loader = TimitBatchLoader.create(cqt_features, timepoints, opt.batch_size)
+local loader = SpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 38
 init_params = false
@@ -239,7 +239,7 @@ for i = 1, iterations do
         mean_sum = 0
     end
 
-    if i % opt.test_every == 0 then
+    if i == 1 or i % opt.test_every == 0 then
         mean_sum = 0
         train = false
         for k=1,50 do

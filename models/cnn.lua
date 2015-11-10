@@ -40,9 +40,19 @@ end
 function CNN.cnn(nspeakers, dropout, dummy)
     -- nchannels  = {[0]=1,4,16,nspeakers}
     -- filt_sizes = {{5,8}, {7,2}, {1, 4}}
-    nchannels    = {[0]=1,8,64,360,nspeakers}
-    filt_sizes   = {{5,8}, {7,2}, {1, 2}, {1,2}}
-    stride_sizes = {{5,2}, {1,2}, {1, 2}, {1,2}}
+    -- nchannels    = {[0]=1,8,64,360,nspeakers}
+    -- filt_sizes   = {{5,8}, {7,2}, {1, 2}, {1,2}}
+    -- stride_sizes = {{5,2}, {1,2}, {1, 2}, {1,2}}
+
+    -- nchannels    = {[0]=1,8,64,nspeakers}
+    -- filt_sizes   = {{5,8}, {7,2}, {1, 4}}
+    -- stride_sizes = {{5,2}, {7,2}, {1, 4}}
+
+    nchannels    = {[0]=1,8,64,nspeakers}
+    filt_sizes   = {{175,8}, {1,4}, {1, 4}}
+    stride_sizes = {{1,2}, {3,2}, {1, 2}}
+    avg_pooling = false
+
     layers = {[0] = nn.Identity()()}
 
     for i=1, #filt_sizes do
@@ -51,12 +61,13 @@ function CNN.cnn(nspeakers, dropout, dummy)
                         stride_sizes[i][1], stride_sizes[i][2])(layers[i-1])
         layers[i] = nn.ReLU()(conv)
 
-        if i == #filt_sizes - 1 then
-            print 'avg pool'
+        if avg_pooling and i == #filt_sizes - 1 then
             layers[i] = nn.SpatialAveragePooling(2,4,2,4)(layers[i])
         end
 
-      if dropout > 0 then layers[i] = nn.Dropout(dropout)(layers[i]) end -- apply dropout, if any
+        if i ~= #filt_sizes and dropout > 0 then -- apply dropout except last layer
+            layers[i] = nn.Dropout(dropout)(layers[i])
+        end
     end
 
     g = -1
