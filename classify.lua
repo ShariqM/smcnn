@@ -19,12 +19,12 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
-cmd:option('-learning_rate',2e-2,'learning rate')
+cmd:option('-learning_rate',1e-1,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 16,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
@@ -141,7 +141,7 @@ function feval(p)
     grad_params:zero()
 
     local timer = torch.Timer()
-    x, spk_labels, weights = unpack(loader:next_batch(train))
+    x, spk_labels, weights = unpack(loader:next_grid_batch(train))
     block_weights = torch.expand(torch.reshape(weights, weights:size()[1], 1), weights:size()[1], nspeakers)
 
     -- print (string.format("Time 1: %.3f", timer:time().real))
