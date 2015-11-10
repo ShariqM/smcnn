@@ -129,7 +129,7 @@ function heat_plot(image)
     debug.debug()
 end
 
-loader:setup_weights(dummy_cnn, opt.type == 'cuda')
+loader:setup_grid_weights(dummy_cnn, opt.type == 'cuda')
 
 local mean_sum = 0
 local plot_time
