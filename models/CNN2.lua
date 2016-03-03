@@ -4,32 +4,30 @@
 local CNN2 = {}
 
 psz = 2
-nchannels = {1,16,64,128}
-full_sizes = {nchannels[4] * 10, 16384, 4096}
+nchannels = {1,16,64}
+full_sizes = {nchannels[#nchannels - 1] * 10, 16384, 4096}
 
 function CNN2.encoder(timepoints)
     local x = nn.Identity()()
-    local conv1 = nn.SpatialConvolution(nchannels[1],nchannels[2],4,4)(x)
-    local relu1 = nn.ReLU()(conv1)
-    local pavg1 = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu1)
-
-    local conv2 = nn.SpatialConvolution(nchannels[2],nchannels[3],4,4)(pavg1)
-    local relu2 = nn.ReLU()(conv2)
-    local pavg2 = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu2)
-
-    local conv3 = nn.SpatialConvolution(nchannels[3],nchannels[4],4,4)(pavg2)
-    local relu3 = nn.ReLU()(conv3)
-    local pavg3 = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu3)
 
 
-    local view = nn.View(full_sizes[1])(pavg2)
+    local curr = x
+    for i=1, #nchannels - 1 do
+        local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],4,4)(curr)
+        local relu = nn.ReLU()(conv)
+        local pavg = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu)
+        curr = pavg
 
-    local full1 = nn.Linear(full_sizes[1], full_sizes[2])(view)
-    local relu4 = nn.ReLU()(full1)
+    curr = nn.View(full_sizes[1])(curr)
 
-    local full2 = nn.Linear(full_sizes[2], full_sizes[3])(relu4)
+    for i=1, #full_sizes - 2 do
+        local full = nn.Linear(full_sizes[i], full_sizes[i+1])(curr)
+        local relu = nn.ReLU()(full)
+        curr = relu
 
-    return nn.gModule({x}, {full2})
+    curr = nn.Linear(full_sizes[i], full_sizes[i+1])(curr)
+
+    return nn.gModule({x}, {curr})
 end
 
 function CNN2.decoder(timepoints)
