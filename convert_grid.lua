@@ -11,14 +11,14 @@ matio.use_lua_strings = true
 local model_utils=require 'model_utils'
 local CNN2 = require 'models.CNN2'
 local Difference = require 'models.difference'
--- local GridSpeechBatchLoader = require 'GridSpeechBatchLoader'
+local GridSpeechBatchLoader = require 'GridSpeechBatchLoader'
 
 cmd = torch.CmdLine()
 cmd:text()
 cmd:text('Train a speech conversion model')
 cmd:text()
 cmd:text('Options')
-cmd:option('-type', 'float', 'type: double | float | cuda')
+cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
 cmd:option('-learning_rate',2e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
@@ -54,7 +54,7 @@ end
 
 cqt_features = 175
 timepoints = 135
---local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
+local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 2
 init_params = false
@@ -65,8 +65,8 @@ if string.len(opt.init_from) > 0 then
     decoder = checkpoint.decoder
     init_params = false
 else
-    encoder = CNN2.encoder(timepoints)
-    decoder = CNN2.decoder(timepoints)
+    encoder = CNN2.encoder(cqt_features, timepoints)
+    decoder = CNN2.decoder(cqt_features, timepoints)
 end
 diffnet = Difference.diff()
 print ('D')
@@ -81,7 +81,7 @@ if opt.type == 'cuda' then
 end
 
 -- put the above things into one flattened parameters tensor
-params, grad_params = model_utils.combine_all_parameters(encoder)
+params, grad_params = model_utils.combine_all_parameters(encoder, decoder)
 nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
 
@@ -97,32 +97,33 @@ function feval(p)
     grad_params:zero()
 
     local timer = torch.Timer()
-    sApX, sBpX, sApY, sBpY = unpack(loader:next_grid_batch(train))
+    sAwX, sBwX, sAwY, sBwY = unpack(loader:next_batch(train))
 
     -- print (string.format("Time 1: %.3f", timer:time().real))
 
     if opt.type == 'cuda' then
-        sApX = sApX:float():cuda()
-        sBpX = sBpX:float():cuda()
-        sApY = sApY:float():cuda()
-        sBpY = sBpY:float():cuda()
+        sAwX = sAwX:float():cuda()
+        sBwX = sBwX:float():cuda()
+        sAwY = sAwY:float():cuda()
+        sBwY = sBwY:float():cuda()
     end
 
-    rsApX = encoder:forward(sApX)
-    rsBpX = encoder:forward(sBpX)
-    diff  = diffnet:forward(sApX, sBpX)
-    rsApY = encoder:forward(sBpY)
+    debug.debug()
+    rsAwX = encoder:forward(sAwX)
+    rsBwX = encoder:forward(sBwX)
+    diff  = diffnet:forward(sAwX, sBwX)
+    rsAwY = encoder:forward(sBwY)
 
-    sBpY_pred = decoder:forward(diff, rsApY)
+    sBwY_pred = decoder:forward(diff, rsAwY)
 
-    local loss = criterion:forward(sBpY, sBpY_pred)
+    local loss = criterion:forward(sBwY, sBwY_pred)
 
-    doutput = criterion:backward(sBpY, sBpY_pred)
-    diff_out, rsApY_out = decoder:backward(doutput)
-    rsApX_out, rsBpX_out = diffnet:backward(diff_out)
-    sApY_out = encoder:backward(rsApY_out)
-    sApX_out = encoder:backward(rsApX_out) -- Check gradients add?
-    sBpX_out = encoder:backward(rsBpX_out)
+    doutput = criterion:backward(sBwY, sBwY_pred)
+    diff_out, rsAwY_out = decoder:backward(doutput)
+    rsAwX_out, rsBwX_out = diffnet:backward(diff_out)
+    sAwY_out = encoder:backward(rsAwY_out)
+    sAwX_out = encoder:backward(rsAwX_out) -- Check gradients add?
+    sBwX_out = encoder:backward(rsBwX_out)
 
     return loss, grad_params
 end

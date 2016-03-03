@@ -3,20 +3,32 @@
 
 local CNN2 = {}
 
-psz = 2
-nchannels = {1,16,64}
-full_sizes = {nchannels[#nchannels - 1] * 10, 16384, 4096}
+psz = 2 -- Pool Size
+csz = 4 -- Conv Size
+nchannels = {1,16}
+dim = 10
+full_sizes = {-1, 2048, 1024}
 
-function CNN2.encoder(timepoints)
+function CNN2.encoder(cqt_features, timepoints)
     local x = nn.Identity()()
 
+    local cqt_size  = cqt_features
+    local time_size = timepoints
 
     local curr = x
     for i=1, #nchannels - 1 do
-        local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],4,4)(curr)
+        local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],csz,csz)(curr)
         local relu = nn.ReLU()(conv)
         local pavg = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu)
         curr = pavg
+
+        cqt_size  = cqt_size - (csz - 1)
+        cqt_size  = cqt_size / psz
+        time_size = time_size - (csz - 1)
+        time_size = time_size / psz
+    end
+
+    full_sizes[1] = nchannels[#nchannels] * cqt_size * time_size
 
     curr = nn.View(full_sizes[1])(curr)
 
@@ -24,49 +36,50 @@ function CNN2.encoder(timepoints)
         local full = nn.Linear(full_sizes[i], full_sizes[i+1])(curr)
         local relu = nn.ReLU()(full)
         curr = relu
+    end
 
-    curr = nn.Linear(full_sizes[i], full_sizes[i+1])(curr)
+    i = #full_sizes - 1
+    local out = nn.Linear(full_sizes[i], full_sizes[i+1])(curr)
 
-    return nn.gModule({x}, {curr})
+    return nn.gModule({x}, {out})
 end
 
-function CNN2.decoder(timepoints)
-    local Afull2 = nn.Identity()()
-    local Bfull2 = nn.Identity()()
+function CNN2.decoder(cqt_features, timepoints)
+    local A = nn.Identity()()
+    local B = nn.Identity()()
 
     -- Deep Combiner
-    -- local Afull3 = nn.Linear(full_sizes[3], full_sizes[3])(Afull2)
-    -- local Arelu = nn.ReLU()(Afull3)
+    i = #full_sizes
+    local Afull = nn.Linear(full_sizes[i], full_sizes[i])(A)
+    local Arelu = nn.ReLU()(Afull)
 
-    -- local Bfull3 = nn.Linear(full_sizes[3], full_sizes[3])(Bfull2)
-    -- local Brelu = nn.ReLU()(Bfull3)
+    local Bfull = nn.Linear(full_sizes[i], full_sizes[i])(B)
+    local Brelu = nn.ReLU()(Bfull)
 
-    -- local full2 = nn.CAddTable()({Arelu, Brelu})
-    local full2 = nn.CAddTable()({Afull2, Bfull2})
-
-    return nn.gModule({Afull2, Bfull2}, {full2})
+    local full = nn.CAddTable()({Arelu, Brelu})
 
     -- Decode it
-    -- local relu4 = nn.Linear(full_sizes[3], full_sizes[2])(full2)
-    -- local full1 = nn.ReLU()(relu4)
---
-    -- local view = nn.Linear(full_sizes[2], full_sizes[1])(full1)
---
-    -- local pavg3 = nn.View(nchannels[4], 40)(view)
---
-    -- local relu3 = nn.SpatialUpSamplingNearest(psz)(pavg3)
-    -- local conv3 = nn.ReLU()(relu3)
-    -- local pavg2 = nn.SpatialConvolution(nchannels[4], nchannels[3],4,4)(conv3)
---
-    -- local relu2 = nn.SpatialUpSamplingNearest(psz)(pavg2)
-    -- local conv2 = nn.ReLU()(pavg2)
-    -- local pavg1 = nn.SpatialConvolution(nchannels[3], nchannels[2],4,4)(conv2)
---
-    -- local relu1 = nn.SpatialUpSamplingNearest(psz)(pavg1)
-    -- local conv1 = nn.ReLU()(relu1)
-    -- local x     = nn.SpatialConvolution(nchannels[2], nchannels[1],4,4)(conv1)
---
-    -- return nn.gModule({Afull2, Bfull2}, {x})
+    local curr = full
+    for i=#full_sizes-1, 2, -1 do
+        local full = nn.Linear(full_sizes[i+1], full_sizes[i])(curr)
+        local relu = nn.ReLU()(full)
+        curr = relu
+    end
+
+    i = 1
+    curr = nn.Linear(full_sizes[i+1], full_sizes[i])(curr)
+    curr = nn.View(nchannels[#nchannels -1], dim)(curr)
+
+    for i=#nchannels-1, 1, -1 do
+        local sus = nn.SpatialUpSamplingNearest(psz)(curr)
+        local relu = nn.ReLU()(sus)
+        local conv = nn.SpatialConvolution(nchannels[i+1],nchannels[i],csz,csz)(relu)
+        curr = conv
+    end
+
+    local out = curr
+
+    return nn.gModule({A, B}, {curr})
 end
 
 return CNN2
