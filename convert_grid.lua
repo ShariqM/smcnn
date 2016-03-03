@@ -57,7 +57,7 @@ timepoints = 135
 local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 2
-init_params = false
+init_params = true
 if string.len(opt.init_from) > 0 then
     print('loading an Network from checkpoint ' .. opt.init_from)
     local checkpoint = torch.load(opt.init_from)
@@ -108,13 +108,13 @@ function feval(p)
         sBwY = sBwY:float():cuda()
     end
 
-    debug.debug()
     rsAwX = encoder:forward(sAwX)
     rsBwX = encoder:forward(sBwX)
-    diff  = diffnet:forward(sAwX, sBwX)
+    diff  = diffnet:forward({rsAwX, rsBwX})
     rsAwY = encoder:forward(sBwY)
 
-    sBwY_pred = decoder:forward(diff, rsAwY)
+    sBwY_pred = decoder:forward({diff, rsAwY})
+    debug.debug()
 
     local loss = criterion:forward(sBwY, sBwY_pred)
 

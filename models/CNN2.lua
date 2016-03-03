@@ -3,17 +3,16 @@
 
 local CNN2 = {}
 
-psz = 2 -- Pool Size
+usz = 8 -- UnPool Size
+psz = 4 -- Pool Size
 csz = 4 -- Conv Size
-nchannels = {1,16}
-dim = 10
-full_sizes = {-1, 2048, 1024}
+nchannels = {1,4,8,16}
+full_sizes = {-1, 512, 256}
+view_height = 1
+view_width  = 1
 
 function CNN2.encoder(cqt_features, timepoints)
     local x = nn.Identity()()
-
-    local cqt_size  = cqt_features
-    local time_size = timepoints
 
     local curr = x
     for i=1, #nchannels - 1 do
@@ -21,15 +20,9 @@ function CNN2.encoder(cqt_features, timepoints)
         local relu = nn.ReLU()(conv)
         local pavg = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu)
         curr = pavg
-
-        cqt_size  = cqt_size - (csz - 1)
-        cqt_size  = cqt_size / psz
-        time_size = time_size - (csz - 1)
-        time_size = time_size / psz
     end
 
-    full_sizes[1] = nchannels[#nchannels] * cqt_size * time_size
-
+    full_sizes[1] = nchannels[#nchannels] * view_height * view_width
     curr = nn.View(full_sizes[1])(curr)
 
     for i=1, #full_sizes - 2 do
@@ -65,16 +58,16 @@ function CNN2.decoder(cqt_features, timepoints)
         local relu = nn.ReLU()(full)
         curr = relu
     end
+    curr = nn.Linear(full_sizes[2], full_sizes[1])(curr)
+    print ('full', full_sizes[1])
 
-    i = 1
-    curr = nn.Linear(full_sizes[i+1], full_sizes[i])(curr)
-    curr = nn.View(nchannels[#nchannels -1], dim)(curr)
+    curr = nn.View(nchannels[#nchannels], view_height, view_width)(curr)
 
     for i=#nchannels-1, 1, -1 do
-        local sus = nn.SpatialUpSamplingNearest(psz)(curr)
-        local relu = nn.ReLU()(sus)
-        local conv = nn.SpatialConvolution(nchannels[i+1],nchannels[i],csz,csz)(relu)
-        curr = conv
+        local sus = nn.SpatialUpSamplingNearest(usz)(curr)
+        local conv = nn.SpatialConvolution(nchannels[i+1],nchannels[i],csz,csz)(sus)
+        local relu = nn.ReLU()(conv)
+        curr = relu
     end
 
     local out = curr

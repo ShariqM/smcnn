@@ -45,7 +45,6 @@ function GridSpeechBatchLoader:next_batch(train)
 
     sAwX, sBwX = self:get_vecs(word)
     sAwY, sBwY = self:get_vecs(oword)
-    debug.debug()
 
     return {sAwX, sBwX, sAwY, sBwY}
 end
