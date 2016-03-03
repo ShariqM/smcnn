@@ -3,6 +3,8 @@ import scipy.io as sio
 from scipy.interpolate import interp1d
 import pdb
 
+tgt_length = 135
+
 def get_alignment(speaker, fname):
     words = {}
     sz = 1024
@@ -23,7 +25,7 @@ def get_alignment(speaker, fname):
                 break
             #print  "'%s': (%d, %d)," % (word, nstart - offset, nstop - offset)
             #print  nstop - nstart
-            words[word] = (nstart - offset, nstop - offset)
+            words[word] = (nstart - offset, min(sz, nstop - offset))
         x = f.readline()
     f.close()
     return words
@@ -35,58 +37,53 @@ def insert(t, key, val):
         t[key].append(val)
 
 def interp(cqtv, word, words):
-    tgt = 135
     start, stop = words[word]
     cqt_word   = np.zeros((cqtv.shape[0], cqtv.shape[1]))
     cqt_word[:,start:stop] = cqtv[:, start:stop]
     cqt_word_i = np.zeros((cqtv.shape[0], cqtv.shape[1]))
 
     diff = stop - start
-    print diff
 
-    x = np.arange(diff) # 10
-    f = interp1d(x, cqtv[:,start:stop])
+    try:
+        x = np.arange(diff)
+        f = interp1d(x, cqtv[:,start:stop])
+    except Exception as e:
+        pdb.set_trace()
 
-    xnew = np.zeros(tgt)
-    tmp = np.arange(0, diff - 1., (diff - 1.)/(tgt - 1.))
+    xnew = np.zeros(tgt_length)
+    tmp = np.arange(0, diff - 1., (diff - 1.)/(tgt_length - 1.))
     xnew[:tmp.shape[0]] = tmp
-    if tmp.shape[0] != tgt:
+    if tmp.shape[0] != tgt_length:
         xnew[-1] = x[-1]
 
-    cqt_word_i[:, start:start+tgt] = f(xnew)
-
-    pdb.set_trace()
-    sio.savemat('tmp/%s' % (word), {'X':cqt_word})
-    sio.savemat('tmp/%s_interp' % (word), {'X':cqt_word_i})
-
+    #cqt_word_i[:, start:start+tgt_length] = f(xnew)
+    #sio.savemat('tmp/%s' % (word), {'X':cqt_word})
+    #sio.savemat('tmp/%s_interp' % (word), {'X':cqt_word_i})
+    return f(xnew)
 
 stats = {}
+data = {'S1': {}, 'S2': {}}
 for speaker in (1,2):
+    skey = 'S%d' % speaker
     fc = open('metadata/s%d_catalog.txt' % speaker)
     x = fc.readline()
     i = 1
     while x != '':
         fname = x[:-1]
         words = get_alignment(speaker, fname)
-
         mname = 'grid/grid/s%d/mat/s%d_%d.mat' % (speaker, speaker, i)
         cqtv = sio.loadmat(mname)['X']
-        print words
-
-        interp(cqtv, 'set', words)
 
         for word, (start,stop) in words.items():
-            cqt_word = np.zeros((cqtv.shape[0], cqtv.shape[1]))
-            cqt_word[:,start:stop] = cqtv[:, start:stop]
-
+            cqt_word = interp(cqtv, word, words)
+            insert(data[skey], word, cqt_word)
             insert(stats, '', 0. +  stop - start)
 
         x = fc.readline()
         i = i + 1
 
-    avgs = {}
-    for key in stats.keys():
-        print "Word: %s, Avg=%.2f, STD=%.2f" % (key, np.average(stats[key]), np.std(stats[key]))
-        pdb.set_trace()
+    for word in data[skey].keys():
+        data[skey][word] = np.asarray(data[skey][word])
     fc.close()
 
+sio.savemat('grid/words/data2.mat', {'X': data})
