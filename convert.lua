@@ -19,6 +19,7 @@ cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'float', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
+<<<<<<< HEAD
 cmd:option('-learning_rate',2e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
@@ -30,6 +31,15 @@ cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
 cmd:option('-test_every',1000,'Run against the test set every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
+=======
+cmd:option('-learning_rate',3e-4,'learning rate')
+cmd:option('-learning_rate_decay',0.98,'learning rate decay')
+cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
+
+cmd:option('-max_epochs',200,'number of full passes through the training data')
+
+cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
+>>>>>>> 6f3ec5244dfd70a362204dd0a60007f543cbef53
 cmd:option('-save_every',200,'Save every $1 iterations')
 cmd:option('-init_from', '', 'initialize network parameters from checkpoint at this path')
 opt = cmd:parse(arg)
@@ -50,6 +60,7 @@ timepoints = 1024
 local loader = SpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 38
+<<<<<<< HEAD
 init_params = false
 if string.len(opt.init_from) > 0 then
     print('loading an Network from checkpoint ' .. opt.init_from)
@@ -62,6 +73,17 @@ else
     dummy_cnn = CNN.cnn(nspeakers, 0, true)
 end
 criterion = nn.ClassNLLCriterion()
+=======
+assert (string.len(opt.init_from) > 0)
+print('loading an Network from checkpoint ' .. opt.init_from)
+local checkpoint = torch.load(opt.init_from)
+cnn = checkpoint.model
+dummy_cnn = checkpoint.dummy_model
+init_params = false
+
+criterion = nn.ClassNLLCriterion()
+criterion_mse = nn.MSECriterion()
+>>>>>>> 6f3ec5244dfd70a362204dd0a60007f543cbef53
 
 -- CUDA
 if opt.type == 'cuda' then
@@ -76,6 +98,7 @@ dummy_params, garbage = model_utils.combine_all_parameters(dummy_cnn)
 dummy_params:fill(1e-1)
 nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
+<<<<<<< HEAD
 if init_params then
     params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
     params:uniform(-0.08, 0.08) -- small uniform numbers
@@ -128,10 +151,13 @@ function heat_plot(image)
     gnuplot.plotflush()
     debug.debug()
 end
+=======
+>>>>>>> 6f3ec5244dfd70a362204dd0a60007f543cbef53
 
 loader:setup_grid_weights(dummy_cnn, opt.type == 'cuda')
 
 local mean_sum = 0
+<<<<<<< HEAD
 local plot_time
 local train = true
 function feval(p)
@@ -183,12 +209,29 @@ function feval(p)
         print ('show')
         heat_plot(x[{1,1,{},{}}]:transpose(1,2))
     end
+=======
+function feval_transform(x)
+    pred   = cnn:forward(x)
+
+    num_per_batch = pred:size()[1]
+    batch_spk_labels = torch.Tensor(pred:size()[1]):fill(tgt)
+    mean_sum_batch = 0
+
+    -- Take the mean of the proabilities in the windows we care about
+    sidx, eidx = 1, num_per_batch
+    probabilities = torch.exp(pred[{{sidx, eidx}, tgt}])
+    relevant = torch.cmul(weights[{{sidx,eidx}}], probabilities):float()
+
+    relevant = relevant:index(1, torch.squeeze(torch.nonzero(relevant)))
+    mean_sum = mean_sum + torch.mean(relevant)
+>>>>>>> 6f3ec5244dfd70a362204dd0a60007f543cbef53
 
     if opt.type == 'cuda' then batch_spk_labels = batch_spk_labels:float():cuda() end -- Ship to GPU
     local loss = criterion:forward(pred, batch_spk_labels)
 
     doutput = criterion:backward(pred, batch_spk_labels):float()
     if opt.type == 'cuda' then doutput = doutput:float():cuda() end
+<<<<<<< HEAD
     -- print (string.format("Time 4: %.3f", timer:time().real))
     doutput = torch.cmul(block_weights, doutput)
     -- print (string.format("Time 5: %.3f", timer:time().real))
@@ -198,6 +241,11 @@ function feval(p)
     -- print ('')
 
     return loss, grad_params
+=======
+    doutput = torch.cmul(block_weights, doutput)
+    dinput = cnn:backward(x, doutput)
+    return loss, dinput
+>>>>>>> 6f3ec5244dfd70a362204dd0a60007f543cbef53
 end
 
 train_losses = {}
@@ -207,6 +255,7 @@ local loss0 = nil
 local optim_state = {learningRate = opt.learning_rate}
 local train_loss = 0
 
+<<<<<<< HEAD
 for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
@@ -268,4 +317,32 @@ for i = 1, iterations do
         break -- halt
     end
     if loss0 == nil then loss0 = loss[1] end
+=======
+local dInput = torch.Tensor(1, 1, timepoints, cqt_features)
+if opt.type == 'cuda' then dInput = dInput:float():cuda() end
+
+src = 2
+tgt = 1
+sz = 50
+x, spk_labels, weights , idx= unpack(loader:get_grid_src(true, src, tgt))
+x_orig = x:clone()
+block_weights = torch.expand(torch.reshape(weights, weights:size()[1], 1), weights:size()[1], nspeakers)
+if opt.type == 'cuda' then x = x:float():cuda() end -- Ship to GPU
+if opt.type == 'cuda' then weights = weights:float():cuda() end -- Ship to GPU
+if opt.type == 'cuda' then block_weights = block_weights:cuda() end -- Ship to GPU
+
+
+for i=1, 100 do
+    _, loss = optim.sgd(feval_transform, x, optim_state)
+    if i == 1 then
+        print (string.format("%d) Mean Error %.3f Loss: %.3f", i, 1 - mean_sum, loss[1]))
+    end
+    if i % opt.print_every == 0 then
+        spk = matio.save(string.format('converted/s%d_%d.mat', src, idx), x_orig:float())
+        spk = matio.save(string.format('converted/s%d_%d_to_s%d_%d_i=%d.mat', src, idx, tgt, idx, i), x:float())
+        print (x:mean(), params:mean())
+        print (string.format("%d) Mean Error %.3f Loss: %.3f", i, 1 - (mean_sum/opt.print_every), loss[1]))
+        mean_sum = 0
+    end
+>>>>>>> 6f3ec5244dfd70a362204dd0a60007f543cbef53
 end

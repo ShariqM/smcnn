@@ -15,24 +15,25 @@ function SpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.timepoints = timepoints
     self.weights_setup = false
 
-    self.nspeakers = 11 -- Rest are not hdf5? or Corrupted?
+    self.nspeakers = 4 -- Rest are not hdf5? or Corrupted?
     total_size =  512000
     self.segments = total_size / timepoints
     self.train_last = 0.96 * self.segments
     self.test_last = self.segments
 
-    -- for i=11,total_speakers do
+    -- for i=1,self.nspeakers do
         -- print (i)
         -- rFile = hdf5.open(string.format('/home/joan/scatt2_fs16_NFFT2048/s%d.mat', i), 'r')
         -- data = rFile:read('/data/X1'):all()
 --
-        -- for j=1,tr_prop do
+        -- for j=481,self.segments do
             -- local wFile = hdf5.open(string.format('grid/s%d/s%d_%d.h5', i, i, j), 'w')
-            -- wFile:write('/data/X1', data[{{(j-1)*seg_size+1,j*seg_size},{}}])
+            -- wFile:write('/data/X1', data[{{(j-1)*timepoints+1,j*timepoints},{}}])
             -- wFile:close()
         -- end
         -- rFile:close()
     -- end
+    -- debug.debug()
 
 
     -- data  = matio.load(string.format('timit/TRAIN/process/data_%d.mat', self.num_examples))['X']
@@ -210,7 +211,7 @@ function SpeechBatchLoader:next_batch(train)
 
     data_batch = torch.Tensor(self.batch_size, 1, self.timepoints, self.cqt_features)
     spk_batch  = torch.Tensor(self.batch_size)
-    w_size     = self.tr_weights:size()[2]
+    w_size     = self.weights:size()[2]
     weight_batch = torch.Tensor(self.batch_size * w_size)
 
     if train then
@@ -220,7 +221,7 @@ function SpeechBatchLoader:next_batch(train)
     end
 
     for i=1, self.batch_size do
-        idx = self:next_idx(train)
+        idx = self:next_spk_and_idx(train)
         data_batch[{i,{},{},{}}] = data[idx]
         spk_batch[i] = spk_label[idx]
         -- print (string.format("IDX=%d, SPK=%d", idx, spk_label[idx]))
@@ -235,7 +236,6 @@ end
 function SpeechBatchLoader:get_grid_energy(cnn, cuda, spk, idx)
     test_batch = torch.Tensor(1, 1, self.timepoints, self.cqt_features)
 
-    print (spk, idx)
     rFile = hdf5.open(string.format('grid/s%d/s%d_%d.h5', spk, spk, idx), 'r')
     data  = rFile:read('/data/X1'):all()
     test_batch[{{},{},{},{}}] = data
@@ -246,24 +246,28 @@ end
 function SpeechBatchLoader:setup_grid_weights(dummy_cnn, cuda)
     energy = self:get_grid_energy(cnn, cuda, 1, 1) -- Arbitrary index
     self.weights = torch.Tensor(self.nspeakers, self.segments, energy:size()[1])
-
-    for spk=1, self.nspeakers do
-        for idx=1, self.segments do
-            energy = self:get_grid_energy(cnn, cuda, spk, idx)
-            weight = energy / energy:max()
-            threshold = weight:mean() - weight:std()/2
-
-            weight:apply(function(i)
-                if i < threshold then
-                    return 0
-                else
-                    return 1
-                end
-            end)
-            self.weights[spk][idx] = weight
-        end
-    end
+    self.weights:fill(1)
     self.weights_setup = true
+    return
+
+    -- for spk=1, self.nspeakers do
+        -- print (spk)
+        -- for idx=1, self.segments do
+            -- energy = self:get_grid_energy(cnn, cuda, spk, idx)
+            -- weight = energy / energy:max()
+            -- threshold = weight:mean() - weight:std()/2
+--
+            -- weight:apply(function(i)
+                -- if i < threshold then
+                    -- return 0
+                -- else
+                    -- return 1
+                -- end
+            -- end)
+            -- self.weights[spk][idx] = weight
+        -- end
+    -- end
+    -- self.weights_setup = true
 end
 
 function SpeechBatchLoader:next_spk_and_idx(train)
@@ -299,18 +303,48 @@ function SpeechBatchLoader:next_grid_batch(train)
     for i=1, self.batch_size do
         spk, idx = unpack(self:next_spk_and_idx(train))
 
-        rFile = hdf5.open(string.format('grid/s%d/s%d_%d', spk, spk, idx), 'r')
+        rFile = hdf5.open(string.format('grid/s%d/s%d_%d.h5', spk, spk, idx), 'r')
         data  = rFile:read('/data/X1'):all()
 
         data_batch[{i,{},{},{}}] = data
         spk_batch[i] = spk
-        weight_batch[{{(i-1)*w_size + 1, i*w_size}}] = weights[{spk,idx,{}}]
+        weight_batch[{{(i-1)*w_size + 1, i*w_size}}] = self.weights[{spk,idx,{}}]
 
         rFile:close()
     end
     self.batch_loading = false
 
     return {data_batch, spk_batch, weight_batch}
+end
+
+function SpeechBatchLoader:get_grid_src(train, src, tgt)
+    assert (src <= self.nspeakers and tgt <= self.nspeakers)
+    -- assert (src ~= tgt)
+
+    if self.weights_setup == false then
+        error('Setup weights before using next_spk())')
+    end
+
+    data_batch = torch.Tensor(1, 1, self.timepoints, self.cqt_features)
+    spk_batch  = torch.Tensor(1)
+    w_size     = self.weights:size()[3]
+    weight_batch = torch.Tensor(w_size)
+
+    spk = src
+    if train then
+        idx = torch.random(1, self.train_last)
+    else
+        idx = torch.random(self.train_last + 1, self.test_last)
+    end
+    rFile = hdf5.open(string.format('grid/s%d/s%d_%d.h5', spk, spk, idx), 'r')
+    data  = rFile:read('/data/X1'):all()
+
+    data_batch[{1,{},{},{}}] = data
+    spk_batch[1] = spk
+    weight_batch[{{1, w_size}}] = self.weights[{spk,idx,{}}]
+
+    rFile:close()
+    return {data_batch, spk_batch, weight_batch, idx}
 end
 
 return SpeechBatchLoader
