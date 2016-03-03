@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.io as sio
+from scipy.interpolate import interp1d
 import pdb
 
 def get_alignment(speaker, fname):
@@ -33,6 +34,30 @@ def insert(t, key, val):
     else:
         t[key].append(val)
 
+def interp(cqtv, word, words):
+    tgt = 135
+    start, stop = words[word]
+    cqt_word   = np.zeros((cqtv.shape[0], cqtv.shape[1]))
+    cqt_word[:,start:stop] = cqtv[:, start:stop]
+    cqt_word_i = np.zeros((cqtv.shape[0], cqtv.shape[1]))
+
+    diff = stop - start
+    print diff
+
+    x = np.arange(diff) # 10
+    f = interp1d(x, cqtv[:,start:stop])
+
+    xnew = np.zeros(tgt)
+    tmp = np.arange(0, diff - 1., (diff - 1.)/(tgt - 1.))
+    xnew[:tmp.shape[0]] = tmp
+    if tmp.shape[0] != tgt:
+        xnew[-1] = x[-1]
+
+    cqt_word_i[:, start:start+tgt] = f(xnew)
+
+    pdb.set_trace()
+    sio.savemat('tmp/%s' % (word), {'X':cqt_word})
+    sio.savemat('tmp/%s_interp' % (word), {'X':cqt_word_i})
 
 
 stats = {}
@@ -46,6 +71,9 @@ for speaker in (1,2):
 
         mname = 'grid/grid/s%d/mat/s%d_%d.mat' % (speaker, speaker, i)
         cqtv = sio.loadmat(mname)['X']
+        print words
+
+        interp(cqtv, 'set', words)
 
         for word, (start,stop) in words.items():
             cqt_word = np.zeros((cqtv.shape[0], cqtv.shape[1]))
