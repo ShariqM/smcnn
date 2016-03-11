@@ -66,10 +66,11 @@ if string.len(opt.init_from) > 0 then
     init_params = false
 else
     encoder = CNN2.encoder(cqt_features, timepoints)
+    debug.debug()
     decoder = CNN2.decoder(cqt_features, timepoints)
+    debug.debug()
 end
 diffnet = Difference.diff()
-print ('D')
 
 criterion = nn.MSECriterion()
 
@@ -99,7 +100,7 @@ function feval(p)
     local timer = torch.Timer()
     sAwX, sBwX, sAwY, sBwY = unpack(loader:next_batch(train))
 
-    -- print (string.format("Time 1: %.3f", timer:time().real))
+    print (string.format("Time 1: %.3f", timer:time().real))
 
     if opt.type == 'cuda' then
         sAwX = sAwX:float():cuda()
@@ -112,11 +113,15 @@ function feval(p)
     rsBwX = encoder:forward(sBwX)
     diff  = diffnet:forward({rsAwX, rsBwX})
     rsAwY = encoder:forward(sBwY)
+    print (string.format("Time 2: %.3f", timer:time().real))
+    debug.debug()
 
     sBwY_pred = decoder:forward({diff, rsAwY})
+    print (string.format("Time 3: %.3f", timer:time().real))
     debug.debug()
 
     local loss = criterion:forward(sBwY, sBwY_pred)
+    print (string.format("Time 4: %.3f", timer:time().real))
 
     doutput = criterion:backward(sBwY, sBwY_pred)
     diff_out, rsAwY_out = decoder:backward(doutput)
@@ -124,6 +129,7 @@ function feval(p)
     sAwY_out = encoder:backward(rsAwY_out)
     sAwX_out = encoder:backward(rsAwX_out) -- Check gradients add?
     sBwX_out = encoder:backward(rsBwX_out)
+    print (string.format("Time 5: %.3f", timer:time().real))
 
     return loss, grad_params
 end

@@ -21,3 +21,6 @@
 - call create_scattfilts
 - do invcqt
 
+
+3-11-16
+* https://swarbrickjones.wordpress.com/2015/04/29/convolutional-autoencoders-in-pythontheanolasagne/

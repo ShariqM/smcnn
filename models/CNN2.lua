@@ -3,26 +3,31 @@
 
 local CNN2 = {}
 
-usz = 8 -- UnPool Size
 psz = 4 -- Pool Size
-csz = 4 -- Conv Size
-nchannels = {1,4,8,16}
-full_sizes = {-1, 512, 256}
-view_height = 1
-view_width  = 1
+csz = 5 -- Conv Size
+ssz = 1 -- Stride Size
+
+nchannels = {1,8,64}
+full_sizes = {-1, 1024, 1024}
+view_height = 9
+view_width  = 7
+
+usz = 4 -- Upsample Size
+
 
 function CNN2.encoder(cqt_features, timepoints)
     local x = nn.Identity()()
 
     local curr = x
     for i=1, #nchannels - 1 do
-        local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],csz,csz)(curr)
+        local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],csz,csz,ssz,ssz)(curr)
         local relu = nn.ReLU()(conv)
         local pavg = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu)
         curr = pavg
     end
 
     full_sizes[1] = nchannels[#nchannels] * view_height * view_width
+    print (full_sizes[1])
     curr = nn.View(full_sizes[1])(curr)
 
     for i=1, #full_sizes - 2 do
@@ -63,17 +68,18 @@ function CNN2.decoder(cqt_features, timepoints)
 
     curr = nn.View(nchannels[#nchannels], view_height, view_width)(curr)
 
-    for i=#nchannels-1, 1, -1 do
-        local sus = nn.SpatialUpSamplingNearest(usz)(curr)
-        local conv = nn.SpatialConvolution(nchannels[i+1],nchannels[i],csz,csz)(sus)
-        local relu = nn.ReLU()(conv)
-        curr = relu
-    end
+    i = #nchannels-1
+    local sus = nn.SpatialUpSamplingNearest(usz)(curr)
+    local pad = nn.SpatialReplicationPadding(0, 0, 2, 0)(sus)
+    local conv = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(pad)
+    local sig = nn.Sigmoid()(conv)
+    curr = sig
 
-    curr_size = 293 * 293
-    local view2 = nn.View(curr_size)(curr)
-    local ffull = nn.Linear(curr_size, cqt_features * timepoints)(view2)
-    local out   = nn.View(1, cqt_features, timepoints)(ffull)
+    i = i - 1
+    local sus = nn.SpatialUpSamplingNearest(usz)(curr)
+    local pad = nn.SpatialReplicationPadding(0, 3, 3, 0)(sus)
+    local conv = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(pad)
+    out = conv
 
     return nn.gModule({A, B}, {out})
 end
