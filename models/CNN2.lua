@@ -70,9 +70,12 @@ function CNN2.decoder(cqt_features, timepoints)
         curr = relu
     end
 
-    local out = curr
+    curr_size = 293 * 293
+    local view2 = nn.View(curr_size)(curr)
+    local ffull = nn.Linear(curr_size, cqt_features * timepoints)(view2)
+    local out   = nn.View(1, cqt_features, timepoints)(ffull)
 
-    return nn.gModule({A, B}, {curr})
+    return nn.gModule({A, B}, {out})
 end
 
 return CNN2
