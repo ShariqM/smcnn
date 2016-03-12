@@ -97,10 +97,11 @@ function feval(p)
     end
     grad_params:zero()
 
+    local perf = false
     local timer = torch.Timer()
     sAwX, sBwX, sAwY, sBwY = unpack(loader:next_batch(train))
 
-    print (string.format("Time 1: %.3f", timer:time().real))
+    if perf then print (string.format("Time 1: %.3f", timer:time().real)) end
 
     if opt.type == 'cuda' then
         sAwX = sAwX:float():cuda()
@@ -112,24 +113,24 @@ function feval(p)
     rsAwX = encoder:forward(sAwX)
     rsBwX = encoder:forward(sBwX)
     diff  = diffnet:forward({rsAwX, rsBwX})
-    rsAwY = encoder:forward(sBwY)
-    print (string.format("Time 2: %.3f", timer:time().real))
-    debug.debug()
+    rsAwY = encoder:forward(sAwY)
+    if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
     sBwY_pred = decoder:forward({diff, rsAwY})
-    print (string.format("Time 3: %.3f", timer:time().real))
-    debug.debug()
+    if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
 
     local loss = criterion:forward(sBwY, sBwY_pred)
-    print (string.format("Time 4: %.3f", timer:time().real))
+    if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
 
     doutput = criterion:backward(sBwY, sBwY_pred)
-    diff_out, rsAwY_out = decoder:backward(doutput)
-    rsAwX_out, rsBwX_out = diffnet:backward(diff_out)
-    sAwY_out = encoder:backward(rsAwY_out)
-    sAwX_out = encoder:backward(rsAwX_out) -- Check gradients add?
-    sBwX_out = encoder:backward(rsBwX_out)
-    print (string.format("Time 5: %.3f", timer:time().real))
+    diff_out, rsAwY_out = unpack(decoder:backward({diff, rsAwY}, doutput))
+
+    rsAwX_out, rsBwX_out = unpack(diffnet:backward({rsAwX, rsBwX}, diff_out))
+
+    sAwY_out = encoder:backward(sAwY, rsAwY_out)
+    sBwX_out = encoder:backward(sBwX, rsBwX_out)
+    sAwX_out = encoder:backward(sAwX, rsAwX_out) -- Check gradients add?
+    if perf then print (string.format("Time 5: %.3f", timer:time().real)) end
 
     return loss, grad_params
 end
@@ -173,9 +174,9 @@ for i = 1, iterations do
 
 
     -- handle early stopping if things are going really bad
-    if loss[1] ~= loss[1] then
+    if loss ~= loss then
         print('loss is NaN.  This usually indicates a bug.  Please check the issues page for existing issues, or create a new issue, if none exist.  Ideally, please state: your operating system, 32-bit/64-bit, your blas version, cpu/cuda/cl?')
         break -- halt
     end
-    if loss0 == nil then loss0 = loss[1] end
+    if loss0 == nil then loss0 = loss end
 end
