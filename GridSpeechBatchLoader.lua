@@ -23,6 +23,7 @@ end
 
 
 function GridSpeechBatchLoader:get_vecs(word)
+    x = self.trainset['S1']
     sAwX = torch.Tensor(1, self.cqt_features, self.timepoints)
     sBwX = torch.Tensor(1, self.cqt_features, self.timepoints)
 
