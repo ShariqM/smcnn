@@ -14,7 +14,7 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.timepoints = timepoints
 
     self.nspeakers = 2 -- For now
-    self.trainset = matio.load('grid/words/data.mat')['X']
+    self.trainset = matio.load('grid/words/data2.mat')['X']
 
     print('data load done.')
     collectgarbage()
@@ -27,8 +27,8 @@ function GridSpeechBatchLoader:get_vecs(word)
     sAwX = torch.Tensor(1, self.cqt_features, self.timepoints)
     sBwX = torch.Tensor(1, self.cqt_features, self.timepoints)
 
-    Asz = self.trainset['S1'][word]:size()[1]
-    Bsz = self.trainset['S2'][word]:size()[1]
+    -- Asz = self.trainset['S1'][word]:size()[1]
+    -- Bsz = self.trainset['S2'][word]:size()[1]
     -- sAwX = self.trainset['S1'][word][torch.random(1,Asz)]
     -- sBwX = self.trainset['S2'][word][torch.random(1,Bsz)]
     -- sAwX = self.trainset['S1'][word][{{1,3},{},{}}]

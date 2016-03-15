@@ -4,6 +4,7 @@ from scipy.interpolate import interp1d
 import pdb
 
 tgt_length = 135
+scale_vals = 1000
 
 def get_alignment(speaker, fname):
     words = {}
@@ -72,7 +73,7 @@ for speaker in (1,2):
         fname = x[:-1]
         words = get_alignment(speaker, fname)
         mname = 'grid/grid/s%d/mat/s%d_%d.mat' % (speaker, speaker, i)
-        cqtv = sio.loadmat(mname)['X']
+        cqtv = scale_vals * sio.loadmat(mname)['X']
 
         for word, (start,stop) in words.items():
             cqt_word = interp(cqtv, word, words)

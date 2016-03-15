@@ -28,7 +28,7 @@ cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
 cmd:option('-test_every',1000,'Run against the test set every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1e-8,'learning rate')
+cmd:option('-learning_rate',1e-3,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -86,6 +86,7 @@ if init_params then
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
 
+save = true
 function feval(p)
     if p ~= params then
         params:copy(p)
@@ -117,12 +118,13 @@ function feval(p)
     local loss = criterion:forward(sBwY, sBwY_pred)
     if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
 
-    doutput = criterion:backward(sBwY, sBwY_pred)
+    doutput = criterion:backward(sBwY_pred, sBwY)
+    if save then matio.save('reconstructions/s2_actual_white.mat', {X1=sBwY}) end
+    if save then matio.save('reconstructions/s2_white.mat', {X1=sBwY_pred}) end
     diff_out, rsAwY_out = unpack(decoder:backward({diff, rsAwY}, doutput))
 
     rsAwX_out, rsBwX_out = unpack(diffnet:backward({rsAwX, rsBwX}, diff_out))
 
-    sAwY_out = encoder:backward(sAwY, rsAwY_out)
     sAwY_out = encoder:backward(sAwY, rsAwY_out)
     sBwX_out = encoder:backward(sBwX, rsBwX_out)
     sAwX_out = encoder:backward(sAwX, rsAwX_out) -- Check gradients add?
