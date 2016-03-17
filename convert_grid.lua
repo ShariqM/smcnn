@@ -28,7 +28,7 @@ cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden 
 cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
 cmd:option('-test_every',1000,'Run against the test set every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1e-3,'learning rate')
+cmd:option('-learning_rate',1e-4,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 

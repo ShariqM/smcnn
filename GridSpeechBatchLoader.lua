@@ -22,32 +22,40 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
 end
 
 
-function GridSpeechBatchLoader:get_vecs(word)
-    x = self.trainset['S1']
-    sAwX = torch.Tensor(1, self.cqt_features, self.timepoints)
-    sBwX = torch.Tensor(1, self.cqt_features, self.timepoints)
-
-    -- Asz = self.trainset['S1'][word]:size()[1]
-    -- Bsz = self.trainset['S2'][word]:size()[1]
-    -- sAwX = self.trainset['S1'][word][torch.random(1,Asz)]
-    -- sBwX = self.trainset['S2'][word][torch.random(1,Bsz)]
-    -- sAwX = self.trainset['S1'][word][{{1,3},{},{}}]
-    -- sBwX = self.trainset['S2'][word][{{1,3},{},{}}]
-    sAwX[{1,{},{}}] = self.trainset['S1'][word][1]
-    sBwX[{1,{},{}}] = self.trainset['S2'][word][1]
-
-    return sAwX, sBwX
-end
-
 function GridSpeechBatchLoader:next_batch(train)
+    sAwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sAwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sBwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
 
-    word = 'four'
-    oword = 'white'
+    words = {'four', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
+    for i=1, self.batch_size do
+        x = self.trainset['S1']
+        y = self.trainset['S2']
 
-    sAwX, sBwX = self:get_vecs(word)
-    sAwY, sBwY = self:get_vecs(oword)
+        word = words[torch.random(1, #words)]
+        oword = word
+        while word == oword do
+            oword = words[torch.random(1, #words)]
+        end
 
-    return {sAwX, sBwX, sAwY, sBwY}
+        s1_wsz = self.trainset['S1'][word]:size()[1]
+        s1_osz = self.trainset['S1'][oword]:size()[1]
+        s2_wsz = self.trainset['S2'][word]:size()[1]
+        s2_osz = self.trainset['S2'][oword]:size()[1]
+
+        sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
+        sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
+        sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
+        sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][torch.random(1,s2_osz)]
+
+        -- print (sAwX[{i,1,{},{}}])
+        -- print (sAwY[{i,1,{},{}}])
+        -- print (sBwX[{i,1,{},{}}])
+        -- print (sBwY[{i,1,{},{}}])
+    end
+
+    return {sAwX, sBwX, sBwX, sBwY}
 end
 
 return GridSpeechBatchLoader
