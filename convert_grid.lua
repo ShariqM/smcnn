@@ -73,6 +73,7 @@ criterion = nn.MSECriterion()
 if opt.type == 'cuda' then
    encoder:cuda()
    decoder:cuda()
+   diffnet:cuda()
    criterion:cuda()
 end
 
@@ -86,7 +87,7 @@ if init_params then
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
 
-save = true
+save = false
 function feval(p)
     if p ~= params then
         params:copy(p)
