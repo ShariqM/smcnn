@@ -28,16 +28,19 @@ function GridSpeechBatchLoader:next_batch(train)
     sBwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
     sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
 
-    words = {'four', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
+    -- words = {'four', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
+    words = {'four', 'white'}
     for i=1, self.batch_size do
         x = self.trainset['S1']
         y = self.trainset['S2']
 
-        word = words[torch.random(1, #words)]
-        oword = word
-        while word == oword do
-            oword = words[torch.random(1, #words)]
-        end
+        -- word = words[torch.random(1, #words)]
+        -- oword = word
+        -- while word == oword do
+            -- oword = words[torch.random(1, #words)]
+        -- end
+        word = 'four'
+        oword = 'white'
 
         s1_wsz = self.trainset['S1'][word]:size()[1]
         s1_osz = self.trainset['S1'][oword]:size()[1]
@@ -55,7 +58,7 @@ function GridSpeechBatchLoader:next_batch(train)
         -- print (sBwY[{i,1,{},{}}])
     end
 
-    return {sAwX, sBwX, sBwX, sBwY}
+    return {sAwX, sBwX, sAwY, sBwY}
 end
 
 return GridSpeechBatchLoader

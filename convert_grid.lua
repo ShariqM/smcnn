@@ -25,8 +25,6 @@ cmd:option('-max_epochs',200,'number of full passes through the training data')
 cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
-cmd:option('-print_every',200,'how many steps/minibatches between printing out the loss')
-cmd:option('-test_every',1000,'Run against the test set every $1 iterations')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-learning_rate',1e-4,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
@@ -87,7 +85,7 @@ if init_params then
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
 
-save = false
+save = true
 function feval(p)
     if p ~= params then
         params:copy(p)
@@ -107,10 +105,13 @@ function feval(p)
         sBwY = sBwY:float():cuda()
     end
 
+    if perf then print (string.format("Time 1.5: %.3f", timer:time().real)) end
+
     rsAwX = encoder:forward(sAwX)
     rsBwX = encoder:forward(sBwX)
-    diff  = diffnet:forward({rsAwX, rsBwX})
     rsAwY = encoder:forward(sAwY)
+    if perf then print (string.format("Time 1.75: %.3f", timer:time().real)) end
+    diff  = diffnet:forward({rsAwX, rsBwX})
     if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
     sBwY_pred = decoder:forward({diff, rsAwY})
@@ -120,11 +121,12 @@ function feval(p)
     if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
 
     doutput = criterion:backward(sBwY_pred, sBwY)
-    if save then matio.save('reconstructions/s2_actual_white.mat', {X1=sBwY}) end
-    if save then matio.save('reconstructions/s2_white.mat', {X1=sBwY_pred}) end
+    if save then matio.save('reconstructions/s2_actual_bwhite.mat', {X1=sBwY:float()}) end
+    if save then matio.save('reconstructions/s2_pred_bwhite.mat', {X1=sBwY_pred:float()}) end
     diff_out, rsAwY_out = unpack(decoder:backward({diff, rsAwY}, doutput))
 
     rsAwX_out, rsBwX_out = unpack(diffnet:backward({rsAwX, rsBwX}, diff_out))
+    if perf then print (string.format("Time 4.5: %.3f", timer:time().real)) end
 
     sAwY_out = encoder:backward(sAwY, rsAwY_out)
     sBwX_out = encoder:backward(sBwX, rsBwX_out)
