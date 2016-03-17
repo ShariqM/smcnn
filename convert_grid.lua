@@ -65,8 +65,8 @@ else
     encoder = CNN2.encoder(cqt_features, timepoints)
     decoder = CNN2.decoder(cqt_features, timepoints)
 end
-diffnet = Difference.diff()
 
+diffnet = Difference.diff()
 criterion = nn.MSECriterion()
 
 -- CUDA
