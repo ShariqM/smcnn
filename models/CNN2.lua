@@ -8,7 +8,7 @@ csz = 5 -- Conv Size
 ssz = 1 -- Stride Size
 
 nchannels = {1,8,64}
-full_sizes = {-1, 1024, 1024}
+full_sizes = {-1, 2048, 2048}
 view_height = 9
 view_width  = 7
 

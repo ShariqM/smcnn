@@ -22,20 +22,24 @@ cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size', 8,'number of sequences to train on in parallel')
+cmd:option('-batch_size', 256,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
+cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1e-4,'learning rate')
+cmd:option('-learning_rate',5e-4,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 
 cmd:option('-print_every',10,'how many steps/minibatches between printing out the loss')
-cmd:option('-save_every',200,'Save every $1 iterations')
+cmd:option('-save_every',100,'Save every $1 iterations')
 cmd:option('-init_from', '', 'initialize network parameters from checkpoint at this path')
+cmd:option('-seed',9415,'torch manual random number generator seed')
 opt = cmd:parse(arg)
+
+torch.manualSeed(opt.seed)
 
 -- CUDA
 if opt.type == 'float' then
@@ -85,7 +89,6 @@ if init_params then
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
 
-save = true
 function feval(p)
     if p ~= params then
         params:copy(p)
@@ -121,8 +124,8 @@ function feval(p)
     if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
 
     doutput = criterion:backward(sBwY_pred, sBwY)
-    if save then matio.save('reconstructions/s2_actual_bwhite.mat', {X1=sBwY:float()}) end
-    if save then matio.save('reconstructions/s2_pred_bwhite.mat', {X1=sBwY_pred:float()}) end
+    if opt.save_pred then matio.save('reconstructions/s2_actual_v3.mat', {X1=sBwY:float()}) end
+    if opt.save_pred then matio.save('reconstructions/s2_pred_v3.mat', {X1=sBwY_pred:float()}) end
     diff_out, rsAwY_out = unpack(decoder:backward({diff, rsAwY}, doutput))
 
     rsAwX_out, rsBwX_out = unpack(diffnet:backward({rsAwX, rsBwX}, diff_out))
