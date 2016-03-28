@@ -8,8 +8,9 @@ scale_vals = 1000.
 
 csz = 175
 tsz = 1024
+ver = 6
 
-for name in ('s2_actual_v3', 's2_pred_v3'):
+for name in ('s2_actual_v%d' % ver, 's2_pred_v%d' % ver):
     x = sio.loadmat('reconstructions/%s.mat' % name)['X1']
 
     batches = x.shape[0]

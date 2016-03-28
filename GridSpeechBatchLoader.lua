@@ -16,6 +16,11 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.nspeakers = 2 -- For now
     self.trainset = matio.load('grid/words/data2.mat')['X']
 
+    -- self.words = {'four', 'white', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
+    self.words = {'four', 'white', 'zero', 'seven', 'soon'}
+    self.test_words = {'nine', 'green'}
+    -- self.words = {'four', 'white'}
+
     print('data load done.')
     collectgarbage()
     return self
@@ -28,21 +33,17 @@ function GridSpeechBatchLoader:next_batch(train)
     sBwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
     sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
 
-    words = {'four', 'white', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
-    -- words = {'four', 'white', 'zero'}
-    -- words = {'four', 'white'}
     for i=1, self.batch_size do
         x = self.trainset['S1']
         y = self.trainset['S2']
 
-        word = words[torch.random(1, #words)]
+        -- word = self.words[torch.random(1, #words)]
+        word = 'four'
         oword = word
         while word == oword do
-            oword = words[torch.random(1, #words)]
+            oword = self.words[torch.random(1, #self.words)]
         end
         -- print (word, oword)
-        -- word = 'four'
-        -- oword = 'white'
 
         s1_wsz = self.trainset['S1'][word]:size()[1]
         s1_osz = self.trainset['S1'][oword]:size()[1]
@@ -59,6 +60,36 @@ function GridSpeechBatchLoader:next_batch(train)
         -- print (sAwY[{i,1,{},{}}])
         -- print (sBwX[{i,1,{},{}}])
         -- print (sBwY[{i,1,{},{}}])
+    end
+
+    return {sAwX, sBwX, sAwY, sBwY}
+end
+
+function GridSpeechBatchLoader:next_test_batch()
+    sAwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sAwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sBwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+
+    for i=1, self.batch_size do
+        x = self.trainset['S1']
+        y = self.trainset['S2']
+
+        word = 'four'
+        oword = word
+        while word == oword do
+            oword = self.test_words[torch.random(1, #self.test_words)]
+        end
+
+        s1_wsz = self.trainset['S1'][word]:size()[1]
+        s1_osz = self.trainset['S1'][oword]:size()[1]
+        s2_wsz = self.trainset['S2'][word]:size()[1]
+        s2_osz = self.trainset['S2'][oword]:size()[1]
+
+        sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
+        sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
+        sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
+        sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][1]
     end
 
     return {sAwX, sBwX, sAwY, sBwY}

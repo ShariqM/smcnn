@@ -24,3 +24,29 @@
 
 3-11-16
 * https://swarbrickjones.wordpress.com/2015/04/29/convolutional-autoencoders-in-pythontheanolasagne/
+
+3-17-16
+* Possible Problems
+    * Hasn't completely converged (emm... maybe
+210/80000 (epoch 0.525), loss=4.09796, grad norm = 0.901, time/batch = 2.1061s
+220/80000 (epoch 0.550), loss=3.63840, grad norm = 0.845, time/batch = 1.9494s
+230/80000 (epoch 0.575), loss=3.90146, grad norm = 0.892, time/batch = 1.9440s
+240/80000 (epoch 0.600), loss=3.86700, grad norm = 0.881, time/batch = 2.0982s
+250/80000 (epoch 0.625), loss=3.61585, grad norm = 0.871, time/batch = 1.9466s
+260/80000 (epoch 0.650), loss=3.77548, grad norm = 0.843, time/batch = 1.9483s
+270/80000 (epoch 0.675), loss=3.67322, grad norm = 0.864, time/batch = 2.1025s
+280/80000 (epoch 0.700), loss=3.77903, grad norm = 0.825, time/batch = 1.9432s
+290/80000 (epoch 0.725), loss=3.82479, grad norm = 0.895, time/batch = 1.9500s
+300/80000 (epoch 0.750), loss=3.85711, grad norm = 0.839, time/batch = 2.1029s
+    * There are some garbage examples (see scattnmf/v4)
+        * Perhaps I need to add a buffer to the word extraction script
+    * Network needs more capacity
+        * Don't want to over fit
+    * Use only long words?
+
+    * More data...
+        1) Wavelet py code looks unintuitive, no phase information, Will it work with random detail info?
+        2) Try STFT with random phase info? (librosa)
+        3) Try to get matlab code to work? Reinstall matlab, not guranteed the function would even work...
+        4) Manually translate 30 speakers * 500 data points. did 2 * 100 took awhile...
+

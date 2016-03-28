@@ -22,12 +22,12 @@ cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',400,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size', 256,'number of sequences to train on in parallel')
+cmd:option('-batch_size',16,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',5e-4,'learning rate')
+cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -124,8 +124,8 @@ function feval(p)
     if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
 
     doutput = criterion:backward(sBwY_pred, sBwY)
-    if opt.save_pred then matio.save('reconstructions/s2_actual_v3.mat', {X1=sBwY:float()}) end
-    if opt.save_pred then matio.save('reconstructions/s2_pred_v3.mat', {X1=sBwY_pred:float()}) end
+    if opt.save_pred then matio.save('reconstructions/s2_actual_v6.mat', {X1=sBwY:float()}) end
+    if opt.save_pred then matio.save('reconstructions/s2_pred_v6.mat', {X1=sBwY_pred:float()}) end
     diff_out, rsAwY_out = unpack(decoder:backward({diff, rsAwY}, doutput))
 
     rsAwX_out, rsBwX_out = unpack(diffnet:backward({rsAwX, rsBwX}, diff_out))
@@ -137,6 +137,33 @@ function feval(p)
     if perf then print (string.format("Time 5: %.3f", timer:time().real)) end
 
     return loss, grad_params
+end
+
+
+function test(p)
+    if p ~= params then
+        params:copy(p)
+    end
+    grad_params:zero()
+
+    sAwX, sBwX, sAwY, sBwY = unpack(loader:next_test_batch())
+
+    if opt.type == 'cuda' then
+        sAwX = sAwX:float():cuda()
+        sBwX = sBwX:float():cuda()
+        sAwY = sAwY:float():cuda()
+        sBwY = sBwY:float():cuda()
+    end
+
+    rsAwX = encoder:forward(sAwX)
+    rsBwX = encoder:forward(sBwX)
+    rsAwY = encoder:forward(sAwY)
+    diff  = diffnet:forward({rsAwX, rsBwX})
+
+    sBwY_pred = decoder:forward({diff, rsAwY})
+
+    local loss = criterion:forward(sBwY, sBwY_pred)
+    print(string.format("TEST LOSS - loss=%.5f", loss))
 end
 
 local iterations = opt.max_epochs * opt.iters
@@ -165,6 +192,7 @@ for i = 1, iterations do
     if i % opt.print_every == 0 then
         print(string.format("%d/%d (epoch %.3f), loss=%.5f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, loss , grad_params:norm(), time))
     end
+    test(params)
 
     if (i % opt.save_every == 0 or i == iterations) then
         local savefile = string.format('%s/net_analogy_%.2f.t7', opt.checkpoint_dir, epoch)
