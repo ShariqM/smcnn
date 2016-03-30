@@ -1,6 +1,7 @@
 require 'torch'
 require 'math'
 require 'lfs'
+require 'hdf5'
 
 local GridSpeechBatchLoader = {}
 GridSpeechBatchLoader.__index = GridSpeechBatchLoader
@@ -15,6 +16,8 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
 
     self.nspeakers = 2 -- For now
     self.trainset = matio.load('grid/words/data2.mat')['X']
+    self.trainset = hdf5.open('grid/stft_data.h5', 'r')
+
 
     -- self.words = {'four', 'white', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
     self.words = {'four', 'white', 'zero', 'seven', 'soon'}
@@ -34,10 +37,12 @@ function GridSpeechBatchLoader:next_batch(train)
     sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
 
     for i=1, self.batch_size do
-        x = self.trainset['S1']
-        y = self.trainset['S2']
+        -- x = self.trainset['S1']
+        -- y = self.trainset['S2']
 
         -- word = self.words[torch.random(1, #words)]
+        sA = 1
+        sB = 2
         word = 'four'
         oword = word
         while word == oword do
@@ -50,6 +55,7 @@ function GridSpeechBatchLoader:next_batch(train)
         s2_wsz = self.trainset['S2'][word]:size()[1]
         s2_osz = self.trainset['S2'][oword]:size()[1]
 
+        x = self.trainset:read(string.format('S%d/%s/X', sA, ):all()
         sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
         sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
         sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
