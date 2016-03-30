@@ -51,8 +51,10 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
-cqt_features = 175
-timepoints = 135
+-- cqt_features = 175
+-- timepoints = 135
+cqt_features = 176
+timepoints = 83
 local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 2
@@ -192,7 +194,7 @@ for i = 1, iterations do
     if i % opt.print_every == 0 then
         print(string.format("%d/%d (epoch %.3f), loss=%.5f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, loss , grad_params:norm(), time))
     end
-    test(params)
+    -- test(params)
 
     if (i % opt.save_every == 0 or i == iterations) then
         local savefile = string.format('%s/net_analogy_%.2f.t7', opt.checkpoint_dir, epoch)

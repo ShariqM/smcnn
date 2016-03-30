@@ -31,6 +31,7 @@ def insert(t, key, val):
     else:
         t[key].append(val)
 
+mytype = np.float32
 nspks = 34
 #h5data = np.zeros((34,
 for spk in range(1,nspks+1):
@@ -56,7 +57,7 @@ for spk in range(1,nspks+1):
             stftm_interp = interp(stftm, word, start, stop)
 
             stftm_interp.imag = np.zeros((stftm_interp.shape[0], stftm_interp.shape[1]))
-            rdata = stftm_interp.real.astype(np.float16)
+            rdata = stftm_interp.real.astype(mytype)
             #stftm_interp.real = np.zeros((stftm_interp.shape[0], stftm_interp.shape[1]))
             #stftm_interp.real = rdata
 
@@ -65,7 +66,7 @@ for spk in range(1,nspks+1):
             #librosa.output.write_wav('test/rtest_%d_%s.wav' % (spk, word), y_word, sr)
 
     for word, stftms in data.items():
-        h5f.create_dataset(word, data=np.asarray(stftms).astype(np.float16))
+        h5f.create_dataset(word, data=np.asarray(stftms).astype(mytype))
         #data[skey][word] = np.asarray(data[skey][word])
     h5f.close()
 

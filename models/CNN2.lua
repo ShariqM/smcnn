@@ -3,16 +3,19 @@
 
 local CNN2 = {}
 
-psz = 4 -- Pool Size
+hpsz = 3 -- Height Pool Size
+wpsz = 3 -- Width Pool Size
 csz = 5 -- Conv Size
 ssz = 1 -- Stride Size
 
 nchannels = {1,8,64}
 full_sizes = {-1, 2048, 2048}
-view_height = 9
+view_height = 17
 view_width  = 7
+-- view_width  = 7
 
-usz = 4 -- Upsample Size
+usz = 3 -- Height Upsample Size
+-- usz = 2 -- Width Upsample Size
 
 
 function CNN2.encoder(cqt_features, timepoints)
@@ -22,7 +25,7 @@ function CNN2.encoder(cqt_features, timepoints)
     for i=1, #nchannels - 1 do
         local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],csz,csz,ssz,ssz)(curr)
         local relu = nn.ReLU()(conv)
-        local pavg = nn.SpatialAveragePooling(psz,psz,psz,psz)(relu)
+        local pavg = nn.SpatialAveragePooling(hpsz,wpsz,hpsz,wpsz)(relu)
         curr = pavg
     end
 
@@ -69,17 +72,16 @@ function CNN2.decoder(cqt_features, timepoints)
     curr = nn.View(nchannels[#nchannels], view_height, view_width)(curr)
 
     i = #nchannels-1
-    local sus = nn.SpatialUpSamplingNearest(usz)(curr)
-    local pad = nn.SpatialReplicationPadding(0, 0, 2, 0)(sus)
-    local conv = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(pad)
-    local sig = nn.Sigmoid()(conv)
-    curr = sig
+    curr = nn.SpatialUpSamplingNearest(usz)(curr)
+    curr = nn.SpatialReplicationPadding(1, 0, 2, 0)(curr)
+    curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
+    curr = nn.Sigmoid()(curr)
 
     i = i - 1
-    local sus = nn.SpatialUpSamplingNearest(usz)(curr)
-    local pad = nn.SpatialReplicationPadding(0, 3, 3, 0)(sus)
-    local conv = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(pad)
-    out = conv
+    curr = nn.SpatialUpSamplingNearest(usz)(curr)
+    curr = nn.SpatialReplicationPadding(1, 0, 1, 0)(curr)
+    curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
+    out = curr
 
     return nn.gModule({A, B}, {out})
 end

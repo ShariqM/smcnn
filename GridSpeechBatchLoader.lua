@@ -15,8 +15,12 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.timepoints = timepoints
 
     self.nspeakers = 2 -- For now
-    self.trainset = matio.load('grid/words/data2.mat')['X']
-    self.trainset = hdf5.open('grid/stft_data.h5', 'r')
+    -- self.trainset = matio.load('grid/words/data2.mat')['X']
+
+    self.trainset = {}
+    for spk=1, self.nspeakers do
+        self.trainset[spk] = hdf5.open(string.format('grid/stft_data/S%d.h5', spk), 'r')
+    end
 
 
     -- self.words = {'four', 'white', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
@@ -50,17 +54,22 @@ function GridSpeechBatchLoader:next_batch(train)
         end
         -- print (word, oword)
 
-        s1_wsz = self.trainset['S1'][word]:size()[1]
-        s1_osz = self.trainset['S1'][oword]:size()[1]
-        s2_wsz = self.trainset['S2'][word]:size()[1]
-        s2_osz = self.trainset['S2'][oword]:size()[1]
+        s1w = self.trainset[sA]:read(word):all()
+        s1o = self.trainset[sB]:read(oword):all()
+        s2w = self.trainset[sA]:read(word):all()
+        s2o = self.trainset[sB]:read(oword):all()
 
-        x = self.trainset:read(string.format('S%d/%s/X', sA, ):all()
-        sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
-        sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
-        sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
-        -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][torch.random(1,s2_osz)]
-        sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][1]
+        scale = 1000
+        sAwX[{i,1,{},{}}] = scale * s1w[torch.random(1, s1w:size()[1])]
+        sAwY[{i,1,{},{}}] = scale * s1o[torch.random(1, s1o:size()[1])]
+        sBwX[{i,1,{},{}}] = scale * s2w[torch.random(1, s2w:size()[1])]
+        sBwY[{i,1,{},{}}] = scale * s2o[1]
+
+        -- sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
+        -- sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
+        -- sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
+            -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][torch.random(1,s2_osz)]
+        -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][1]
 
         -- print (sAwX[{i,1,{},{}}])
         -- print (sAwY[{i,1,{},{}}])
