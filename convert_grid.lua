@@ -19,15 +19,15 @@ cmd:text('Train a speech conversion model')
 cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
-cmd:option('-iters',400,'iterations per epoch')
+cmd:option('-iters',200,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size',16,'number of sequences to train on in parallel')
+cmd:option('-batch_size',512,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1e-2,'learning rate')
+cmd:option('-learning_rate',1e-4,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
