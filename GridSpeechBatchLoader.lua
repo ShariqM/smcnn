@@ -32,6 +32,7 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
                   'again', 'now', 'please'}
 
     self.words = {'four', 'white', 'zero', 'seven', 'soon'}
+    self.words = {'four', 'white'}
     self.test_words = {'nine', 'green'}
     -- self.words = {'four', 'white'}
 
@@ -73,9 +74,12 @@ function GridSpeechBatchLoader:next_batch_help(test)
 
         -- print (string.format("Time X: %.3f", timer:time().real))
 
-        sAwX[{i,1,{},{}}] = s1w[torch.random(1, s1w:size()[1])]
-        sAwY[{i,1,{},{}}] = s1o[torch.random(1, s1o:size()[1])]
-        sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
+        sAwX[{i,1,{},{}}] = s1w[1]
+        sAwY[{i,1,{},{}}] = s1o[1]
+        sBwX[{i,1,{},{}}] = s2w[1]
+        -- sAwX[{i,1,{},{}}] = s1w[torch.random(1, s1w:size()[1])]
+        -- sAwY[{i,1,{},{}}] = s1o[torch.random(1, s1o:size()[1])]
+        -- sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
         sBwY[{i,1,{},{}}] = s2o[1]
 
         -- sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
