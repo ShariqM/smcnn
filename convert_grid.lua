@@ -68,10 +68,15 @@ if string.len(opt.init_from) > 0 then
 else
     encoder = CNN2.encoder(cqt_features, timepoints)
     decoder = CNN2.decoder(cqt_features, timepoints)
+    debug.debug()
 end
 
 diffnet = Difference.diff()
 criterion = nn.MSECriterion()
+
+
+local net_params, net_grads = encoder:parameters()
+itorch.image(encoder:get(1).weight)
 
 -- CUDA
 if opt.type == 'cuda' then
