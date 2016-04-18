@@ -11,7 +11,10 @@ from scipy.interpolate import interp1d
 
 from helpers import process_align
 
+mytype = np.float16
+nspks = 34
 tgt_length = 83
+scale = 1
 
 def interp(stftm, word, start, stop):
     length = stftm.shape[1]
@@ -32,27 +35,8 @@ def insert(t, key, val):
     else:
         t[key].append(val)
 
-def stft(x, fftsize=256, overlap=8):
-    hop = fftsize / overlap
-    w = scipy.hanning(fftsize+1)[:-1]      # better reconstruction with this trick +1)[:-1]
-    return np.array([np.fft.rfft(w*x[i:i+fftsize]) for i in range(0, len(x)-fftsize, hop)])
-
-def istft(X, overlap=4):
-    fftsize=(X.shape[1]-1)*2
-    hop = fftsize / overlap
-    w = scipy.hanning(fftsize+1)[:-1]
-    x = scipy.zeros(X.shape[0]*hop)
-    wsum = scipy.zeros(X.shape[0]*hop)
-    for n,i in enumerate(range(0, len(x)-fftsize, hop)):
-        x[i:i+fftsize] += scipy.real(np.fft.irfft(X[n])) * w   # overlap-add
-        wsum[i:i+fftsize] += w ** 2.
-    pos = wsum != 0
-    x[pos] /= wsum[pos]
-    return x
-
 mytype = np.float32
 nspks = 34
-#h5data = np.zeros((34,
 for spk in range(1,nspks+1):
     if spk == 33:
         continue
@@ -66,7 +50,6 @@ for spk in range(1,nspks+1):
     for fname in fnames:
         if i % 100 == 0:
             print '\t%d' % i
-            #break
         i = i + 1
         aname = fname.split('/')[-1][:-4]
         words = process_align('grid/data/all_align/s%d_align/%s.align' % (spk, aname))
@@ -116,10 +99,11 @@ for spk in range(1,nspks+1):
             #librosa.output.write_wav('test/rtest_%d_%s.wav' % (spk, word), y_word, sr)
 
     for word, stftms in data.items():
-        h5f.create_dataset(word, data=np.asarray(stftms).astype(mytype))
+        data[word] = np.asarray(stftms).astype(mytype)
+        h5f.create_dataset(word, data=data[word])
         #data[skey][word] = np.asarray(data[skey][word])
-    sio.savemat('grid/stft_data/%s.mat' % skey, {'X':data}, do_compression=True)
-    h5f.close()
+    #sio.savemat('grid/stft_data/%s.mat' % skey, {'X':data}, do_compression=True)
+    #h5f.close()
 
 #sio.savemat('grid/stft_data.mat', {'X': data}, do_compression=True)
 #h5f = h5py.File('grid/stft_data.h5', 'w')

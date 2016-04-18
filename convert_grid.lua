@@ -19,15 +19,15 @@ cmd:text('Train a speech conversion model')
 cmd:text()
 cmd:text('Options')
 cmd:option('-type', 'double', 'type: double | float | cuda')
-cmd:option('-iters',400,'iterations per epoch')
+cmd:option('-iters',200,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size',16,'number of sequences to train on in parallel')
+cmd:option('-batch_size',64,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1e-2,'learning rate')
+cmd:option('-learning_rate',1,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -86,6 +86,7 @@ if opt.type == 'cuda' then
    criterion:cuda()
 end
 
+
 -- put the above things into one flattened parameters tensor
 params, grad_params = model_utils.combine_all_parameters(encoder, decoder)
 nparams = params:nElement()
@@ -95,6 +96,10 @@ if init_params then
     params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
+
+first = true
+last_grad_params = params -- Dummy
+last_params = params -- Dummy
 
 function feval(p)
     if p ~= params then
@@ -143,6 +148,13 @@ function feval(p)
     sAwX_out = encoder:backward(sAwX, rsAwX_out) -- Check gradients add?
     if perf then print (string.format("Time 5: %.3f", timer:time().real)) end
 
+    if not first then
+        print (string.format("L:%.5f", torch.norm(grad_params - last_grad_params) / torch.norm(params - last_params)))
+    end
+    first = false
+    last_params:copy(params)
+    print ("Params", torch.norm(params))
+    -- last_grad_params:copy(grad_params)
     return loss, grad_params
 end
 
@@ -182,6 +194,7 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
+    print (i)
     local _, loss = optim.sgd(feval, params, optim_state)
     local time = timer:time().real
 
@@ -195,11 +208,6 @@ for i = 1, iterations do
             print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
         end
     end
-
-    if i % opt.print_every == 0 then
-        print(string.format("%d/%d (epoch %.3f), loss=%.5f, grad norm = %.3f, time/batch = %.4fs", i, iterations, epoch, loss , grad_params:norm(), time))
-    end
-    -- test(params)
 
     if (i % opt.save_every == 0 or i == iterations) then
         local savefile = string.format('%s/net_analogy_%.2f.t7', opt.checkpoint_dir, epoch)
