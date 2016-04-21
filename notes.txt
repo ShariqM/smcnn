@@ -50,3 +50,12 @@
         3) Try to get matlab code to work? Reinstall matlab, not guranteed the function would even work...
         4) Manually translate 30 speakers * 500 data points. did 2 * 100 took awhile...
 
+
+4-20-16
+- 1380/40000 (epoch 6.900), train_loss = 7.70260668, grad norm = 4.1305e+00, time/batch = 0.7885s
+1/L:0.00066
+- 500/40000 (epoch 2.500), train_loss = 9.77965641, grad norm = 3.9056e+00, time/batch = 0.7952s
+1/L:0.00086 || 2/(L+m):0.00107 || m:709.709
+1/L:0.00083 || 2/(L+m):0.00104 || m:712.737
+1/L:0.00083 || 2/(L+m):0.00105 || m:688.755
+1/L:0.00076 || 2/(L+m):0.00092 || m:854.978

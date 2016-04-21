@@ -20,7 +20,8 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.trainset = {}
     for spk=1, self.nspeakers do
         -- self.trainset[spk] = hdf5.open(string.format('grid/stft_data/S%d.h5', spk), 'r')
-        self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
+        -- self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
+        self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
     end
 
 
@@ -31,9 +32,15 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
                   'six', 'seven', 'eight', 'nine', 'zero',
                   'again', 'now', 'please'}
 
-    self.words = {'four', 'white', 'zero', 'seven', 'soon'}
-    self.words = {'four', 'white'}
-    self.test_words = {'nine', 'green'}
+    self.words = {'four', 'white', 'zero', 'seven', 'soon',}
+    self.words = {
+                  'blue', 'green', 'red', 'white',
+                  'one', 'two', 'three', 'four', 'five',
+                  'six', 'seven', 'nine', 'zero',
+                  'again', 'now', 'please'}
+
+    -- self.words = {'four', 'white'}
+    self.test_words = {'place'} -- s8 eight is bad
     -- self.words = {'four', 'white'}
 
     print('data load done.')
@@ -51,15 +58,25 @@ function GridSpeechBatchLoader:next_batch_help(test)
     for i=1, self.batch_size do
         sA = 1
         if test then
-            sB = self.nspeakers
+            sB = self.nspeakers - 1
         else
             sB = torch.random(2, self.nspeakers - 1)
+            -- sB = torch.random(2, self.nspeakers)
+        end
+
+        if test then
+            words = self.test_words
+            wsz = #self.test_words
+        else
+            words = self.words
+            wsz = #self.words
         end
 
         word = 'four'
+        -- word = words[torch.random(1, wsz)]
         oword = word
         while word == oword do
-            oword = self.words[torch.random(1, #self.words)]
+            oword = words[torch.random(1, wsz)]
         end
 
         -- local timer = torch.Timer() FIXME too slow
@@ -74,12 +91,15 @@ function GridSpeechBatchLoader:next_batch_help(test)
 
         -- print (string.format("Time X: %.3f", timer:time().real))
 
-        sAwX[{i,1,{},{}}] = s1w[1]
-        sAwY[{i,1,{},{}}] = s1o[1]
-        sBwX[{i,1,{},{}}] = s2w[1]
-        -- sAwX[{i,1,{},{}}] = s1w[torch.random(1, s1w:size()[1])]
-        -- sAwY[{i,1,{},{}}] = s1o[torch.random(1, s1o:size()[1])]
-        -- sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
+        -- sAwX[{i,1,{},{}}] = s1w[1]
+        -- sAwY[{i,1,{},{}}] = s1o[1]
+        -- sBwX[{i,1,{},{}}] = s2w[1]
+        -- sAwX[{i,1,{},{}}] = s1w[torch.random(1, 10)]
+        -- sAwY[{i,1,{},{}}] = s1o[torch.random(1, 10)]
+        -- sBwX[{i,1,{},{}}] = s2w[torch.random(1, 10)]
+        sAwX[{i,1,{},{}}] = s1w[torch.random(1, s1w:size()[1])]
+        sAwY[{i,1,{},{}}] = s1o[torch.random(1, s1o:size()[1])]
+        sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
         sBwY[{i,1,{},{}}] = s2o[1]
 
         -- sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
@@ -88,6 +108,7 @@ function GridSpeechBatchLoader:next_batch_help(test)
             -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][torch.random(1,s2_osz)]
         -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][1]
     end
+
 
     return {sAwX, sBwX, sAwY, sBwY}
 end

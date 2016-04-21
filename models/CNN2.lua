@@ -3,15 +3,33 @@
 
 local CNN2 = {}
 
+--176x83
+--[[
+    hpsz = 3 -- Height Pool Size
+    wpsz = 3 -- Width Pool Size
+    csz = 5 -- Conv Size
+    ssz = 1 -- Stride Size
+
+    nchannels = {1,8,64}
+    full_sizes = {-1, 2048, 2048}
+    view_height = 17
+    view_width  = 7
+    -- view_width  = 7
+
+    usz = 3 -- Height Upsample Size
+    -- usz = 2 -- Width Upsample Size
+]]--
+
+-- 175x140
 hpsz = 3 -- Height Pool Size
 wpsz = 3 -- Width Pool Size
 csz = 5 -- Conv Size
 ssz = 1 -- Stride Size
 
 nchannels = {1,8,64}
-full_sizes = {-1, 2048, 2048}
+full_sizes = {-1, 2 * 2048, 2 * 2048}
 view_height = 17
-view_width  = 7
+view_width  = 13
 -- view_width  = 7
 
 usz = 3 -- Height Upsample Size
@@ -73,13 +91,13 @@ function CNN2.decoder(cqt_features, timepoints)
 
     i = #nchannels-1
     curr = nn.SpatialUpSamplingNearest(usz)(curr)
-    curr = nn.SpatialReplicationPadding(1, 0, 2, 0)(curr)
+    curr = nn.SpatialReplicationPadding(2, 0, 2, 0)(curr)
     curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
     curr = nn.Sigmoid()(curr)
 
     i = i - 1
     curr = nn.SpatialUpSamplingNearest(usz)(curr)
-    curr = nn.SpatialReplicationPadding(1, 0, 1, 0)(curr)
+    curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr)
     curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
     out = curr
 
