@@ -100,4 +100,56 @@ function GridSpeechBatchLoader:next_test_batch()
     return self:next_batch_help(true)
 end
 
+function GridSpeechBatchLoader:next_class_batch()
+    x = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    spk_labels = torch.Tensor(self.batch_size, 33)
+
+    sAwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sBwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+
+    for i=1, self.batch_size do
+        sA = 1
+        if test then
+            sB = self.nspeakers
+        else
+            sB = torch.random(2, self.nspeakers - 1)
+        end
+
+        word = 'four'
+        oword = word
+        while word == oword do
+            oword = self.words[torch.random(1, #self.words)]
+        end
+
+        -- local timer = torch.Timer() FIXME too slow
+        -- s1w = self.trainset[sA]:read(word):all()
+        -- s1o = self.trainset[sB]:read(oword):all()
+        -- s2w = self.trainset[sA]:read(word):all()
+        -- s2o = self.trainset[sB]:read(oword):all()
+        s1w = self.trainset[sA][word]
+        s1o = self.trainset[sB][oword]
+        s2w = self.trainset[sA][word]
+        s2o = self.trainset[sB][oword]
+
+        -- print (string.format("Time X: %.3f", timer:time().real))
+
+        sAwX[{i,1,{},{}}] = s1w[1]
+        sAwY[{i,1,{},{}}] = s1o[1]
+        sBwX[{i,1,{},{}}] = s2w[1]
+        -- sAwX[{i,1,{},{}}] = s1w[torch.random(1, s1w:size()[1])]
+        -- sAwY[{i,1,{},{}}] = s1o[torch.random(1, s1o:size()[1])]
+        -- sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
+        sBwY[{i,1,{},{}}] = s2o[1]
+
+        -- sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
+        -- sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
+        -- sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
+            -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][torch.random(1,s2_osz)]
+        -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][1]
+    end
+
+    return {sAwX, sBwX, sAwY, sBwY}
+end
+
 return GridSpeechBatchLoader

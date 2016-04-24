@@ -34,13 +34,13 @@ def insert(t, key, val):
         t[key].append(val)
 
 mytype = np.float32
-nspks = 2 # Skip 33 and 34 (33 is weird)
+nspks = 15 # Skip 33 and 34 (33 is weird)
 Npad = 2 ** 15
 cqt_time_bin = .002 # 2 ms
 Fs = 25000.
 lengths = []
 
-for spk in range(1,nspks+1):
+for spk in range(13,nspks+1):
     skey = 'S%d' % spk
     print skey
     #h5f = h5py.File('grid/stft_data/%s.h5' % skey, 'w')

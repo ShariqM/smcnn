@@ -86,4 +86,38 @@ function CNN2.decoder(cqt_features, timepoints)
     return nn.gModule({A, B}, {out})
 end
 
+function CNN2.adv_classifier(cqt_features, timepoints)
+    local x = nn.Identity()()
+
+    local curr = x
+    for i=1, #nchannels - 1 do
+        local conv = nn.SpatialConvolution(nchannels[i],nchannels[i+1],csz,csz,ssz,ssz)(curr)
+        local relu = nn.ReLU()(conv)
+        local pavg = nn.SpatialAveragePooling(hpsz,wpsz,hpsz,wpsz)(relu)
+        curr = pavg
+    end
+
+    full_sizes[1] = nchannels[#nchannels] * view_height * view_width
+    print (full_sizes[1])
+    curr = nn.View(full_sizes[1])(curr)
+
+    -- Speaker
+    curr = nn.Linear(full_sizes[1], 2048)
+    curr = nn.ReLU()(curr)
+    curr = nn.Linear(2048, 256):
+    curr = nn.ReLU()(curr)
+    curr = nn.Linear(256, 33):
+    word_out = nn.LogSoftMax()(curr)
+
+    -- Word
+    curr = nn.Linear(full_sizes[1], 2048)
+    curr = nn.ReLU()(curr)
+    curr = nn.Linear(2048, 256):
+    curr = nn.ReLU()(curr)
+    curr = nn.Linear(256, 31):
+    word_out = nn.LogSoftMax()(curr)
+
+    return nn.gModule({x}, {spk_out, word_out})
+end
+
 return CNN2

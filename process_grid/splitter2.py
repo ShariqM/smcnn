@@ -54,15 +54,26 @@ for spk in range(1,nspks+1):
         aname = fname.split('/')[-1][:-4]
         words = process_align('grid/data/all_align/s%d_align/%s.align' % (spk, aname))
 
-        continue
-        do_stft = False
+        do_stft = True
         if do_stft:
             y, sr = librosa.load(fname, sr=25000)
-            #stftm = librosa.stft(y, n_fft=175 * 2, dtype=np.complex64)
+            for i, comp in ((1,16), (2, 128), (3, 1024), (4, 4096)):
+                plt.subplot(int("22%d" % i))
+                stftm = librosa.stft(y, n_fft=comp, dtype=np.complex64)
+                plt.title("%d" % comp)
+                if i <= 4:
+                    S = stftm ** 2
+                    la = librosa.logamplitude(S, ref_power=np.max)
+                    plt.imshow(np.abs(S), origin='lower', aspect='auto',
+                             interpolation='nearest')
+                    #plt.imshow(np.abs(la), origin='lower', aspect='auto',
+                             #interpolation='nearest')
+                    plt.colorbar(format='%+2.0f dB')
+                else:
+                    plt.imshow(np.abs(stftm)**2, origin='lower', aspect='auto',
+                             interpolation='nearest')
             #stftm = librosa.stft(y, n_fft=512, dtype=np.complex64)
-            stftm = stft(y).T
-            plt.imshow(np.abs(stftm)**2, origin='lower', aspect='auto',
-                     interpolation='nearest')
+            #stftm = stft(y).T
         else:
             plt.subplot(211)
             cqt = sio.loadmat('grid/grid/s2/s2_3.mat')['X']

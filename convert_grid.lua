@@ -68,6 +68,7 @@ if string.len(opt.init_from) > 0 then
 else
     encoder = CNN2.encoder(cqt_features, timepoints)
     decoder = CNN2.decoder(cqt_features, timepoints)
+    class
     debug.debug()
 end
 
