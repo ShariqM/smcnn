@@ -23,11 +23,13 @@ cmd:option('-iters',200,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 cmd:option('-batch_size',64,'number of sequences to train on in parallel')
-cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
+cmd:option('-dropout',0.1,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-save_pred',false,'Save prediction')
+cmd:option('-run_test',false,'Run test set')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1,'learning rate')
+cmd:option('-dont_save', false, 'Stop checkpointing')
+cmd:option('-learning_rate',1e-4,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -55,21 +57,28 @@ end
 -- timepoints = 135
 cqt_features = 176
 timepoints = 83
+-- cqt_features = 175
+-- timepoints = 140
 local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
 nspeakers = 2
 init_params = true
 if string.len(opt.init_from) > 0 then
-    print('loading an Network from checkpoint ' .. opt.init_from)
+    print('loading a Network from checkpoint ' .. opt.init_from)
     local checkpoint = torch.load(opt.init_from)
     encoder = checkpoint.encoder
     decoder = checkpoint.decoder
     init_params = false
 else
+<<<<<<< HEAD
     encoder = CNN2.encoder(cqt_features, timepoints)
     decoder = CNN2.decoder(cqt_features, timepoints)
     class
     debug.debug()
+=======
+    encoder = CNN2.encoder(cqt_features, timepoints, opt.dropout)
+    decoder = CNN2.decoder(cqt_features, timepoints, opt.dropout)
+>>>>>>> f4f5b83d0d8f3cfe6a1c195a8ec2334b5f177ece
 end
 
 diffnet = Difference.diff()
@@ -77,7 +86,6 @@ criterion = nn.MSECriterion()
 
 
 local net_params, net_grads = encoder:parameters()
-itorch.image(encoder:get(1).weight)
 
 -- CUDA
 if opt.type == 'cuda' then
@@ -99,8 +107,8 @@ if init_params then
 end
 
 first = true
-last_grad_params = params -- Dummy
-last_params = params -- Dummy
+last_grad_params = params:clone() -- Dummy
+last_params = params:clone() -- Dummy
 
 function feval(p)
     if p ~= params then
@@ -131,14 +139,19 @@ function feval(p)
     if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
     sBwY_pred = decoder:forward({diff, rsAwY})
+    -- print ('Decode out:', sBwY_pred:size())
     if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
 
     local loss = criterion:forward(sBwY, sBwY_pred)
     if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
 
+    -- tot_snr = tot_snr -10 * math.log10(math.pow((sBwY - sBwY_pred):norm(),2)/(math.pow(sBwY:norm(), 2)))
     doutput = criterion:backward(sBwY_pred, sBwY)
-    if opt.save_pred then matio.save('reconstructions/s2_actual_v6.mat', {X1=sBwY:float()}) end
-    if opt.save_pred then matio.save('reconstructions/s2_pred_v6.mat', {X1=sBwY_pred:float()}) end
+    if opt.save_pred then
+        matio.save('reconstructions/train_actual.mat', {X1=sBwY:float()})
+        matio.save('reconstructions/train_pred.mat', {X1=sBwY_pred:float()})
+        if not opt.run_test then os.exit() end
+    end
     diff_out, rsAwY_out = unpack(decoder:backward({diff, rsAwY}, doutput))
 
     rsAwX_out, rsBwX_out = unpack(diffnet:backward({rsAwX, rsBwX}, diff_out))
@@ -149,13 +162,20 @@ function feval(p)
     sAwX_out = encoder:backward(sAwX, rsAwX_out) -- Check gradients add?
     if perf then print (string.format("Time 5: %.3f", timer:time().real)) end
 
+    --[[
     if not first then
-        print (string.format("L:%.5f", torch.norm(grad_params - last_grad_params) / torch.norm(params - last_params)))
+        grad_diff = grad_params - last_grad_params
+        param_diff = params - last_params
+        L = torch.norm(grad_diff) / torch.norm(param_diff)
+        m = grad_diff:dot(param_diff) / torch.norm(param_diff) ^ 2
+        print (string.format("1/L:%.5f || 2/(L+m):%.5f || m:%.3f", 1/L, 2/(L+m), m))
     end
     first = false
     last_params:copy(params)
-    print ("Params", torch.norm(params))
-    -- last_grad_params:copy(grad_params)
+    last_grad_params:copy(grad_params)
+    -- print ("Params", torch.norm(params))
+    ]]--
+
     return loss, grad_params
 end
 
@@ -184,6 +204,12 @@ function test(p)
 
     local loss = criterion:forward(sBwY, sBwY_pred)
     print(string.format("TEST LOSS - loss=%.5f", loss))
+
+    if opt.save_pred then
+        matio.save('reconstructions/test_actual.mat', {X1=sBwY:float()})
+        matio.save('reconstructions/test_pred.mat', {X1=sBwY_pred:float()})
+        os.exit()
+    end
 end
 
 local iterations = opt.max_epochs * opt.iters
@@ -195,7 +221,7 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    print (i)
+    -- print (i)
     local _, loss = optim.sgd(feval, params, optim_state)
     local time = timer:time().real
 
@@ -210,7 +236,16 @@ for i = 1, iterations do
         end
     end
 
-    if (i % opt.save_every == 0 or i == iterations) then
+    if opt.run_test then test(params) end
+
+    if i == 1 or i % opt.print_every == 0 then
+        print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, loss, grad_params:norm(), time))
+
+        train_loss = 0
+        mean_sum = 0
+    end
+
+    if not opt.dont_save and (i % opt.save_every == 0 or i == iterations) then
         local savefile = string.format('%s/net_analogy_%.2f.t7', opt.checkpoint_dir, epoch)
         print('saving checkpoint to ' .. savefile)
         checkpoint = {}

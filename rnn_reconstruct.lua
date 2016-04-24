@@ -44,7 +44,7 @@ cmd:option('-model', 'rnn', 'lstm or rnn')
 cmd:option('-pool_size', 2, 'Pool window on hidden state') -- Need to work in stride
 -- optimization
 cmd:option('-iters',100,'iterations per epoch')
-cmd:option('-learning_rate',1e-4,'learning rate')
+cmd:option('-learning_rate',1e-2,'learning rate')
 -- cmd:option('-learning_rate',1e-6,'learning rate')
 cmd:option('-learning_rate_decay',0.97,'learning rate decay')
 cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start decaying the learning rate')
