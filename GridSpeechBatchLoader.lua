@@ -20,8 +20,10 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.trainset = {}
     for spk=1, self.nspeakers do
         -- self.trainset[spk] = hdf5.open(string.format('grid/stft_data/S%d.h5', spk), 'r')
-        -- self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
-        self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
+        self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
+        -- print (self.trainset[spk]['lay'])
+        -- debug.debug()
+        -- self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
     end
 
 
@@ -36,11 +38,11 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
     self.words = {
                   'blue', 'green', 'red', 'white',
                   'one', 'two', 'three', 'four', 'five',
-                  'six', 'seven', 'nine', 'zero',
-                  'again', 'now', 'please'}
+                  'six', 'seven', 'zero',
+                  'now', 'please'}
 
     -- self.words = {'four', 'white'}
-    self.test_words = {'place'} -- s8 eight is bad
+    self.test_words = {'place', 'nine', 'again'} -- s8 eight is bad
     -- self.words = {'four', 'white'}
 
     print('data load done.')

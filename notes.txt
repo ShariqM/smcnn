@@ -59,3 +59,27 @@
 1/L:0.00083 || 2/(L+m):0.00104 || m:712.737
 1/L:0.00083 || 2/(L+m):0.00105 || m:688.755
 1/L:0.00076 || 2/(L+m):0.00092 || m:854.978
+
+number of parameters in the model: 74761505
+1/40000 (epoch 0.005), train_loss = 7.33584261, grad norm = 2.3684e+00, time/batch = 2.4059s
+10/40000 (epoch 0.050), train_loss = 7.65272379, grad norm = 2.4109e+00, time/batch = 2.4384s
+20/40000 (epoch 0.100), train_loss = 7.92363071, grad norm = 2.4169e+00, time/batch = 2.3786s
+30/40000 (epoch 0.150), train_loss = 7.45778275, grad norm = 3.2743e+00, time/batch = 2.4370s
+40/40000 (epoch 0.200), train_loss = 8.23110294, grad norm = 2.4507e+00, time/batch = 2.3790s
+50/40000 (epoch 0.250), train_loss = 6.91202784, grad norm = 1.9713e+00, time/batch = 2.3787s
+60/40000 (epoch 0.300), train_loss = 7.47488880, grad norm = 1.7282e+00, time/batch = 2.3807s
+70/40000 (epoch 0.350), train_loss = 7.14405727, grad norm = 1.6916e+00, time/batch = 2.3763s
+80/40000 (epoch 0.400), train_loss = 7.52390671, grad norm = 4.0187e+00, time/batch = 2.3785s
+90/40000 (epoch 0.450), train_loss = 7.64264870, grad norm = 2.1598e+00, time/batch = 2.3797s
+100/40000 (epoch 0.500), train_loss = 7.26051092, grad norm = 1.6723e+00, time/batch = 2.3777s
+saving checkpoint to cv/net_analogy_0.50.t7
+saved checkpoint to cv/net_analogy_0.50.t7
+
+shariq@redwood3:~/smcnn$ th convert_grid.lua -type cuda -init_from cv/net_analogy_13.50.t7 -run_test -dont_save -save_pred -dropout 0
+==> switching to CUDA
+data load done.
+loading a Network from checkpoint cv/net_analogy_13.50.t7
+number of parameters in the model: 74761505
+TEST LOSS - loss=8.25185
+
+- Not terrible...
