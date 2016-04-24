@@ -70,15 +70,8 @@ if string.len(opt.init_from) > 0 then
     decoder = checkpoint.decoder
     init_params = false
 else
-<<<<<<< HEAD
-    encoder = CNN2.encoder(cqt_features, timepoints)
-    decoder = CNN2.decoder(cqt_features, timepoints)
-    class
-    debug.debug()
-=======
     encoder = CNN2.encoder(cqt_features, timepoints, opt.dropout)
     decoder = CNN2.decoder(cqt_features, timepoints, opt.dropout)
->>>>>>> f4f5b83d0d8f3cfe6a1c195a8ec2334b5f177ece
 end
 
 diffnet = Difference.diff()
