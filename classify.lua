@@ -22,12 +22,12 @@ cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',200,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size',64,'number of sequences to train on in parallel')
+cmd:option('-batch_size',8,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
 cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1,'learning rate')
+cmd:option('-learning_rate',1e-3,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -53,11 +53,12 @@ end
 
 -- cqt_features = 175
 -- timepoints = 135
-cqt_features = 176
-timepoints = 83
+-- cqt_features = 176
+-- timepoints = 83
+cqt_features = 175
+timepoints = 140
 local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
 
-nspeakers = 2
 init_params = true
 if string.len(opt.init_from) > 0 then
     print('loading an Network from checkpoint ' .. opt.init_from)
@@ -65,7 +66,7 @@ if string.len(opt.init_from) > 0 then
     cnn = checkpoint.cnn
     init_params = false
 else
-    cnn = CNN2.adv_class(cqt_features, timepoints)
+    cnn = CNN2.adv_classifier(cqt_features, timepoints, opt.dropout)
 end
 
 criterion = nn.ClassNLLCriterion()
@@ -79,7 +80,7 @@ if opt.type == 'cuda' then
 end
 
 -- put the above things into one flattened parameters tensor
-params, grad_params = model_utils.combine_all_parameters(encoder, decoder)
+params, grad_params = model_utils.combine_all_parameters(cnn)
 nparams = params:nElement()
 print('number of parameters in the model: ' .. nparams)
 
@@ -102,12 +103,19 @@ function feval(p)
 
     if opt.type == 'cuda' then
         x = x:float():cuda()
-        spk_labels = spk_labels:float():cuda()
+        spk_labels  =  spk_labels:float():cuda()
+        word_labels = word_labels:float():cuda()
     end
 
     if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
     spk_pred, word_pred = unpack(cnn:forward(x))
+    for i=1,opt.batch_size do
+        sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
+        wprob = torch.exp(word_pred)[{i,word_labels[i]}]
+        print (sprob, wprob)
+    end
+    debug.debug()
     if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
     local loss = criterion:forward(spk_pred, spk_labels)
     loss = loss + criterion:forward(word_pred, word_labels)
@@ -118,8 +126,7 @@ function feval(p)
     if opt.type == 'cuda' then doutput_spk  = doutput_spk:cuda() end
     if opt.type == 'cuda' then doutput_word = doutput_word:cuda() end
 
-    cnn:backward(x, doutput_spk)
-    cnn:backward(x, doutput_word)
+    cnn:backward(x, {doutput_spk, doutput_word})
 
     return loss, grad_params
 end
@@ -133,7 +140,7 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    print (i)
+    -- print (i)
     local _, loss = optim.sgd(feval, params, optim_state)
     local time = timer:time().real
 

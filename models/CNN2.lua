@@ -4,6 +4,7 @@
 local CNN2 = {}
 
 --176x83
+--[[
 hpsz = 3 -- Height Pool Size
 wpsz = 3 -- Width Pool Size
 csz = 5 -- Conv Size
@@ -17,9 +18,9 @@ view_width  = 7
 
 usz = 3 -- Height Upsample Size
 -- usz = 2 -- Width Upsample Size
+]]--
 
 -- 175x140
---[[
 hpsz = 3 -- Height Pool Size
 wpsz = 3 -- Width Pool Size
 csz = 5 -- Conv Size
@@ -33,7 +34,6 @@ view_width  = 13
 
 usz = 3 -- Height Upsample Size
 -- usz = 2 -- Width Upsample Size
-]]--
 
 -- 175x140
 --[[
@@ -136,7 +136,7 @@ function CNN2.decoder(cqt_features, timepoints, dropout)
     return nn.gModule({A, B}, {out})
 end
 
-function CNN2.adv_classifier(cqt_features, timepoints)
+function CNN2.adv_classifier(cqt_features, timepoints, dropout)
     local x = nn.Identity()()
 
     local curr = x
@@ -149,22 +149,22 @@ function CNN2.adv_classifier(cqt_features, timepoints)
 
     full_sizes[1] = nchannels[#nchannels] * view_height * view_width
     print (full_sizes[1])
-    curr = nn.View(full_sizes[1])(curr)
+    view = nn.View(full_sizes[1])(curr)
 
     -- Speaker
-    curr = nn.Linear(full_sizes[1], 2048)
+    curr = nn.Linear(full_sizes[1], 2048)(view)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(2048, 256):
+    curr = nn.Linear(2048, 256)(curr)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(256, 33):
-    word_out = nn.LogSoftMax()(curr)
+    curr = nn.Linear(256, 33)(curr)
+    spk_out = nn.LogSoftMax()(curr)
 
     -- Word
-    curr = nn.Linear(full_sizes[1], 2048)
+    curr = nn.Linear(full_sizes[1], 2048)(view)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(2048, 256):
+    curr = nn.Linear(2048, 256)(curr)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(256, 31):
+    curr = nn.Linear(256, 31)(curr)
     word_out = nn.LogSoftMax()(curr)
 
     return nn.gModule({x}, {spk_out, word_out})
