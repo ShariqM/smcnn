@@ -21,13 +21,14 @@ cmd:option('-iters',200,'iterations per epoch')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 cmd:option('-batch_size',64,'number of sequences to train on in parallel')
 cmd:option('-dropout',0.1,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
-cmd:option('-compile_test',false,'use small network to quickly run')
+cmd:option('-compile_test',false,'Dont load data, use small network, to make sure there are no symantic errors')
+cmd:option('-log',false,'Log the probabilities of correct answers')
 
 cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-run_test',false,'Run test set')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-dont_save', false, 'Stop checkpointing')
-cmd:option('-learning_rate',1e-4,'learning rate')
+cmd:option('-learning_rate',1e-3,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -57,7 +58,8 @@ end
 -- timepoints = 83
 cqt_features = 175
 timepoints = 140
-local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
+local loader = GridSpeechBatchLoader.create(cqt_features, timepoints,
+                                            opt.batch_size, opt.compile_test)
 
 nspeakers = 2
 init_params = true
@@ -66,6 +68,7 @@ if string.len(opt.init_from) > 0 then
     local checkpoint = torch.load(opt.init_from)
     encoder = checkpoint.encoder
     decoder = checkpoint.decoder
+    classify = checkpoint.classify
     init_params = false
 else
     if opt.compile_test then
@@ -150,7 +153,6 @@ function gen_feval(p)
     -- print ('Decode out:', sBwY_pred:size())
     if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
 
-
     spk_pred, word_pred = unpack(classify:forward(sBwY_pred))
     local loss = criterion:forward(spk_pred, spk_labels)
     loss = loss + criterion:forward(word_pred, word_labels)
@@ -207,11 +209,21 @@ function disc_feval(p)
     if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
     spk_pred, word_pred = unpack(classify:forward(x))
-    -- for i=1,opt.batch_size do
-        -- sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
-        -- wprob = torch.exp(word_pred)[{i,word_labels[i]}]
-        -- print (sprob, wprob)
-    -- end
+    if opt.log then
+        print "True Distribution"
+        for i=1,4 do
+            sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
+            wprob = torch.exp(word_pred)[{i,word_labels[i]}]
+            print (string.format("P(S)=%.2f || P(W)=%.2f", sprob, wprob))
+        end
+        print "Generative Distribution"
+        for i=opt.batch_size-4,opt.batch_size do
+            sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
+            wprob = torch.exp(word_pred)[{i,word_labels[i]}]
+            print (string.format("P(S)=%.2f || P(W)=%.2f", sprob, wprob))
+        end
+    end
+
     -- debug.debug()
     if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
     local loss = criterion:forward(spk_pred, spk_labels)
@@ -232,16 +244,26 @@ local iterations = opt.max_epochs * opt.iters
 local iterations_per_epoch = opt.iters
 local optim_state = {learningRate = opt.learning_rate}
 
+opt_disc = true
+opt_gen  = true
+local disc_loss = -1.0
+local gen_loss  = -1.0
+
 for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    local _, gen_loss = optim.sgd(gen_feval, gen_params, optim_state)
-    local _, disc_loss = optim.sgd(disc_feval, disc_params, optim_state)
-    local time = timer:time().real
+    if i % 10 == 0 or opt_gen then
+        _, gen_loss = optim.sgd(gen_feval, gen_params, optim_state)
+        gen_loss = gen_loss[1]
+    end
 
-    gen_loss = gen_loss[1]
-    disc_loss = disc_loss[1]
+    if true or opt_disc then
+        _, disc_loss = optim.sgd(disc_feval, disc_params, optim_state)
+        disc_loss = disc_loss[1]
+    end
+
+    local time = timer:time().real
 
     if i == 1 or i % opt.print_every == 0 then
         print(string.format("%d/%d (epoch %.3f), disc_loss = %6.8f, gen_loss=%6.8f, time/batch = %.4fs", i, iterations, epoch, disc_loss, gen_loss, time))
@@ -257,6 +279,20 @@ for i = 1, iterations do
         torch.save(savefile, checkpoint)
         print('saved checkpoint to ' .. savefile)
     end
+
+    -- thresh = 0.1
+    -- if gen_loss < thresh and disc_loss < thresh then
+        -- opt_gen = true
+        -- opt_disc = true
+    -- elseif opt_gen and gen_loss < thresh then
+        -- opt_gen = false
+    -- elseif not opt_gen and gen_loss >= thresh then
+        -- opt_gen = true
+    -- elseif opt_disc and disc_loss < thresh then
+        -- opt_disc = false
+    -- elseif not opt_disc and disc_loss >= thresh then
+        -- opt_disc = true
+    -- end
 
 
     -- handle early stopping if things are going really bad

@@ -6,7 +6,7 @@ require 'hdf5'
 local GridSpeechBatchLoader = {}
 GridSpeechBatchLoader.__index = GridSpeechBatchLoader
 
-function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
+function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size, compile_test)
     local self = {}
     setmetatable(self, GridSpeechBatchLoader)
 
@@ -27,7 +27,7 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
         -- self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
         -- print (self.trainset[spk]['lay'])
         -- debug.debug()
-        if false then
+        if not compile_test then
             self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
         else
             self.trainset[spk] = {}
@@ -184,7 +184,7 @@ function GridSpeechBatchLoader:next_adv_class_batch(cuda)
     local rsBwX = encoder:forward(sBwX)
     local rsAwY = encoder:forward(sAwY)
     local diff  = diffnet:forward({rsAwX, rsBwX})
-    gen_x = decoder:forward({diff, rsAwY}) -- pred_sBwY
+    local gen_x = decoder:forward({diff, rsAwY}) -- pred_sBwY
     local gen_spk_labels  = torch.zeros(self.batch_size):fill(self.gen_speaker)
     local gen_word_labels = torch.zeros(self.batch_size):fill(self.gen_word)
 
@@ -192,7 +192,6 @@ function GridSpeechBatchLoader:next_adv_class_batch(cuda)
         gen_spk_labels = gen_spk_labels:float():cuda()
         gen_word_labels = gen_word_labels:float():cuda()
     end
-
 
     -- Combine
     x[{{1, self.batch_size},{},{},{}}]             = true_x

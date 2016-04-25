@@ -117,8 +117,8 @@ function CNN2.decoder(cqt_features, timepoints, dropout)
 
     i = #nchannels-1
     curr = nn.SpatialUpSamplingNearest(usz)(curr)
-    -- curr = nn.SpatialReplicationPadding(2, 0, 2, 0)(curr) (175x140)
-    curr = nn.SpatialReplicationPadding(1, 0, 2, 0)(curr)
+    curr = nn.SpatialReplicationPadding(2, 0, 2, 0)(curr)
+    -- curr = nn.SpatialReplicationPadding(1, 0, 2, 0)(curr)
     curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
     curr = nn.Sigmoid()(curr)
 
@@ -128,8 +128,8 @@ function CNN2.decoder(cqt_features, timepoints, dropout)
 
     i = i - 1
     curr = nn.SpatialUpSamplingNearest(usz)(curr)
-    -- curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr) (175x140)
-    curr = nn.SpatialReplicationPadding(1, 0, 1, 0)(curr)
+    curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr)
+    -- curr = nn.SpatialReplicationPadding(1, 0, 1, 0)(curr)
     curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
     out = curr
 
