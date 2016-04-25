@@ -16,7 +16,9 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
 
     self.nspeakers = 3 -- For now
     self.nclass_speakers = 33
+    self.gen_speaker = self.nclass_speakers
     self.nclass_words = 31
+    self.gen_word = self.nclass_words
     -- self.trainset = matio.load('grid/words/data2.mat')['X']
 
     self.trainset = {}
@@ -25,7 +27,13 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
         -- self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
         -- print (self.trainset[spk]['lay'])
         -- debug.debug()
-        self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
+        if false then
+            self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
+        else
+            self.trainset[spk] = {}
+            self.trainset[spk]['four'] = torch.zeros(2, cqt_features, timepoints)
+            self.trainset[spk]['white'] = torch.zeros(2, cqt_features, timepoints)
+        end
     end
 
 
@@ -43,7 +51,7 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size)
                   'six', 'seven', 'zero',
                   'now', 'please'}
 
-    -- self.words = {'four', 'white'}
+    self.words = {'four', 'white'}
     self.test_words = {'place', 'nine', 'again'} -- s8 eight is bad
     -- self.words = {'four', 'white'}
 
@@ -58,6 +66,8 @@ function GridSpeechBatchLoader:next_batch_help(test)
     sAwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
     sBwX = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
     sBwY = torch.Tensor(self.batch_size, 1, self.cqt_features, self.timepoints)
+    spk_labels  = torch.zeros(self.batch_size)
+    word_labels = torch.zeros(self.batch_size)
 
     for i=1, self.batch_size do
         sA = 1
@@ -80,7 +90,8 @@ function GridSpeechBatchLoader:next_batch_help(test)
         -- word = words[torch.random(1, wsz)]
         oword = word
         while word == oword do
-            oword = words[torch.random(1, wsz)]
+            oword_idx = torch.random(1, wsz)
+            oword = words[oword_idx]
         end
 
         -- local timer = torch.Timer() FIXME too slow
@@ -106,6 +117,9 @@ function GridSpeechBatchLoader:next_batch_help(test)
         sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
         sBwY[{i,1,{},{}}] = s2o[1]
 
+        spk_labels[i] = sB
+        word_labels[i] = oword_idx
+
         -- sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
         -- sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
         -- sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
@@ -114,7 +128,7 @@ function GridSpeechBatchLoader:next_batch_help(test)
     end
 
 
-    return {sAwX, sBwX, sAwY, sBwY}
+    return {sAwX, sBwX, sAwY, sBwY, spk_labels, word_labels}
 end
 
 function GridSpeechBatchLoader:next_batch()
@@ -142,6 +156,53 @@ function GridSpeechBatchLoader:next_class_batch()
         spk_labels[i] = spk
         word_labels[i] = word_idx
     end
+
+    return {x, spk_labels, word_labels}
+end
+
+function GridSpeechBatchLoader:next_adv_class_batch(cuda)
+    local abatch_size = 2 * self.batch_size
+    local x = torch.Tensor(abatch_size, 1, self.cqt_features, self.timepoints)
+    local spk_labels  = torch.zeros(abatch_size)
+    local word_labels = torch.zeros(abatch_size)
+
+    -- True Distribution
+    local true_x, true_spk_labels, true_word_labels = unpack(self:next_class_batch())
+
+    -- Generative Distribution
+    local sAwX, sBwX, sAwY, q, q, q = unpack(self:next_batch())
+    if cuda then
+        x = x:float():cuda()
+        spk_labels = spk_labels:float():cuda()
+        word_labels = word_labels:float():cuda()
+        sAwX = sAwX:float():cuda()
+        sBwX = sBwX:float():cuda()
+        sAwY = sAwY:float():cuda()
+    end
+
+    local rsAwX = encoder:forward(sAwX)
+    local rsBwX = encoder:forward(sBwX)
+    local rsAwY = encoder:forward(sAwY)
+    local diff  = diffnet:forward({rsAwX, rsBwX})
+    gen_x = decoder:forward({diff, rsAwY}) -- pred_sBwY
+    local gen_spk_labels  = torch.zeros(self.batch_size):fill(self.gen_speaker)
+    local gen_word_labels = torch.zeros(self.batch_size):fill(self.gen_word)
+
+    if cuda then
+        gen_spk_labels = gen_spk_labels:float():cuda()
+        gen_word_labels = gen_word_labels:float():cuda()
+    end
+
+
+    -- Combine
+    x[{{1, self.batch_size},{},{},{}}]             = true_x
+    x[{{self.batch_size+1, abatch_size},{},{},{}}] = gen_x
+
+    spk_labels[{{1,self.batch_size}}]           = true_spk_labels
+    spk_labels[{{self.batch_size+1,abatch_size}}] = gen_spk_labels
+
+    word_labels[{{1,self.batch_size}}]            = true_word_labels
+    word_labels[{{self.batch_size+1,abatch_size}}] = gen_word_labels
 
     return {x, spk_labels, word_labels}
 end

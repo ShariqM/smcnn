@@ -18,7 +18,7 @@ view_width  = 7
 
 usz = 3 -- Height Upsample Size
 -- usz = 2 -- Width Upsample Size
-]]--
+--]]
 
 -- 175x140
 hpsz = 3 -- Height Pool Size
@@ -170,4 +170,36 @@ function CNN2.adv_classifier(cqt_features, timepoints, dropout)
     return nn.gModule({x}, {spk_out, word_out})
 end
 
+function CNN2.test_encoder(cqt_features, timepoints, dropout)
+    local x = nn.Identity()()
+    local view = nn.View(cqt_features * timepoints)(x)
+    local out  = nn.Linear(cqt_features * timepoints, 10)(view)
+    return nn.gModule({x}, {out})
+end
+
+function CNN2.test_decoder(cqt_features, timepoints, dropout)
+    local A = nn.Identity()()
+    local B = nn.Identity()()
+
+    local Aout = nn.Linear(10, cqt_features * timepoints)(A)
+    local Bout = nn.Linear(10, cqt_features * timepoints)(B)
+
+    local out = nn.CAddTable()({Aout, Bout})
+    out = nn.View(1, cqt_features, timepoints)(out)
+
+    return nn.gModule({A,B}, {out})
+end
+
+function CNN2.test_adv_classifier(cqt_features, timepoints, dropout)
+    local x = nn.Identity()()
+    local view = nn.View(cqt_features * timepoints)(x)
+
+    spk = nn.Linear(cqt_features * timepoints, 33)(view)
+    spk_out = nn.LogSoftMax()(spk)
+
+    word = nn.Linear(cqt_features * timepoints, 31)(view)
+    word_out = nn.LogSoftMax()(word)
+
+    return nn.gModule({x}, {spk_out, word_out})
+end
 return CNN2
