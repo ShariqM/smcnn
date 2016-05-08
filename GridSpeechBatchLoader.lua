@@ -24,34 +24,16 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size, comp
 
     self.trainset = {}
     for spk=1, self.nspeakers do
-        if not compile_test then
-            self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
-        else
-            self.trainset[spk] = {}
-            self.trainset[spk]['four'] = torch.zeros(2, cqt_features, timepoints)
-            self.trainset[spk]['white'] = torch.zeros(2, cqt_features, timepoints)
-        end
+        self.trainset[spk] = matio.load(string.format('grid/cqt_data/s%d.mat', spk))['X']
     end
 
-
-    -- self.words = {'four', 'white', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
     -- self.words = {'bin', 'lay', 'place', 'set',
                   -- 'blue', 'green', 'red', 'white',
                   -- 'one', 'two', 'three', 'four', 'five',
                   -- 'six', 'seven', 'eight', 'nine', 'zero',
                   -- 'again', 'now', 'please'}
 
-    -- self.words = {'four', 'white', 'zero', 'seven', 'soon',}
-    -- self.words = {
-                  -- 'blue', 'green', 'red', 'white',
-                  -- 'one', 'two', 'three', 'four', 'five',
-                  -- 'six', 'seven', 'zero',
-                  -- 'now', 'please'}
-    -- self.words = {'again', 'now', 'please', 'soon'}
     self.words = {'blue', 'green', 'red', 'white'}
-    -- self.words = {'four', 'white'}
-    self.test_words = {'place', 'nine', 'again'} -- s8 eight is bad
-    -- self.words = {'four', 'white'}
 
     print(string.format('data load done. %.3f', timer:time().real))
     collectgarbage()
@@ -79,32 +61,19 @@ function GridSpeechBatchLoader:next_batch_help(test)
             wsz = #self.words
         end
 
-        word = 'blue'
-        -- word = words[torch.random(1, wsz)]
+        word = 'blue' -- XXX FIXME
+        -- word = words[torch.random(1, wsz)] -- Later
         oword = word
         while word == oword do
             oword_idx = torch.random(1, wsz)
             oword = words[oword_idx]
         end
 
-        -- local timer = torch.Timer() FIXME too slow
-        -- s1w = self.trainset[sA]:read(word):all()
-        -- s1o = self.trainset[sB]:read(oword):all()
-        -- s2w = self.trainset[sA]:read(word):all()
-        -- s2o = self.trainset[sB]:read(oword):all()
         s1w = self.trainset[sA][word]
         s1o = self.trainset[sB][oword]
         s2w = self.trainset[sA][word]
         s2o = self.trainset[sB][oword]
 
-        -- print (string.format("Time X: %.3f", timer:time().real))
-
-        -- sAwX[{i,1,{},{}}] = s1w[1]
-        -- sAwY[{i,1,{},{}}] = s1o[1]
-        -- sBwX[{i,1,{},{}}] = s2w[1]
-        -- sAwX[{i,1,{},{}}] = s1w[torch.random(1, 10)]
-        -- sAwY[{i,1,{},{}}] = s1o[torch.random(1, 10)]
-        -- sBwX[{i,1,{},{}}] = s2w[torch.random(1, 10)]
         sAwX[{i,1,{},{}}] = s1w[torch.random(1, s1w:size()[1])]
         sAwY[{i,1,{},{}}] = s1o[torch.random(1, s1o:size()[1])]
         sBwX[{i,1,{},{}}] = s2w[torch.random(1, s2w:size()[1])]
@@ -112,12 +81,6 @@ function GridSpeechBatchLoader:next_batch_help(test)
 
         spk_labels[i] = sB
         word_labels[i] = oword_idx
-
-        -- sAwX[{i,1,{},{}}] = self.trainset['S1'][word][torch.random(1,s1_wsz)]
-        -- sAwY[{i,1,{},{}}] = self.trainset['S1'][oword][torch.random(1,s1_osz)]
-        -- sBwX[{i,1,{},{}}] = self.trainset['S2'][word][torch.random(1,s2_wsz)]
-            -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][torch.random(1,s2_osz)]
-        -- sBwY[{i,1,{},{}}] = self.trainset['S2'][oword][1]
     end
 
 
@@ -143,10 +106,8 @@ function GridSpeechBatchLoader:next_class_batch()
         word_idx = torch.random(1, #self.words)
         word = self.words[word_idx]
 
-        -- local timer = torch.Timer() FIXME too slow
         word_examples = self.trainset[spk][word]
 
-        -- print (spk, word)
         x[{i,1,{},{}}] = word_examples[torch.random(1, word_examples:size()[1])]
         spk_labels[i] = spk
         word_labels[i] = word_idx
@@ -189,7 +150,6 @@ function GridSpeechBatchLoader:next_adv_class_batch(cuda)
     end
 
     -- Combine
-    -- print (gen_x:size())
     x[{{1, self.batch_size},{},{},{}}]             = true_x
     x[{{self.batch_size+1, abatch_size},{},{},{}}] = gen_x
 

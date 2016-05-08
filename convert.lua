@@ -21,7 +21,6 @@ cmd:option('-iters',200,'iterations per epoch')
 cmd:option('-max_epochs',200,'number of full passes through the training data')
 cmd:option('-batch_size',128,'number of sequences to train on in parallel')
 cmd:option('-dropout',0.1,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
-cmd:option('-compile_test',false,'Dont load data, use small network, to make sure there are no symantic errors')
 cmd:option('-log',false,'Log the probabilities of correct answers')
 
 cmd:option('-save_pred',false,'Save prediction')
@@ -52,24 +51,17 @@ elseif opt.type == 'cuda' then
     torch.setdefaulttensortype('torch.FloatTensor') -- Not sure why I do this
 end
 
--- cqt_features = 175
--- timepoints = 135
--- cqt_features = 176
--- timepoints = 83
 cqt_features = 175
 timepoints = 140
 local loader = GridSpeechBatchLoader.create(cqt_features, timepoints,
                                             opt.batch_size, opt.compile_test)
 
-nspeakers = 2
 init_params = true
 if string.len(opt.init_from) > 0 then
     print('loading a Network from checkpoint ' .. opt.init_from)
     local checkpoint = torch.load(opt.init_from)
     encoder = checkpoint.encoder
     decoder = checkpoint.decoder
-    -- encoder  = CNN.encoder(cqt_features, timepoints, opt.dropout)
-    -- decoder  = CNN.decoder(cqt_features, timepoints, opt.dropout)
     classify = checkpoint.classify
     init_params = false
 else
@@ -106,7 +98,6 @@ disc_params, disc_grad_params = model_utils.combine_all_parameters(classify)
 nparams = disc_params:nElement()
 print('number of parameters in the discriminative model: ' .. nparams)
 
--- gen_params:uniform(-0.08, 0.08) -- small uniform numbers
 if init_params then
     gen_params:uniform(-0.08, 0.08) -- small uniform numbers
     disc_params:uniform(-0.08, 0.08) -- small uniform numbers
@@ -170,7 +161,6 @@ function gen_feval(p)
     end
 
     -- Backward
-    -- tot_snr = tot_snr -10 * math.log10(math.pow((sBwY - sBwY_pred):norm(),2)/(math.pow(sBwY:norm(), 2)))
     doutput_spk  = criterion:backward(spk_pred,  spk_labels):float()
     doutput_word = criterion:backward(word_pred, word_labels):float()
     if opt.type == 'cuda' then doutput_spk  = doutput_spk:cuda() end
@@ -253,20 +243,18 @@ opt_disc = true
 opt_gen  = true
 local disc_loss = -1.0
 local gen_loss  = -1.0
+local threshold_1 = 0.85
+local threshold_2 = 0.95
 
 for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
     if opt_gen then
-    -- if true or i % 10 == 0 or opt_gen then
-    -- if true then
         _, gen_loss = optim.sgd(gen_feval, gen_params, optim_state)
         gen_loss = gen_loss[1]
     end
 
-    -- if i % 10 == 0 then
-    -- if true or opt_disc then
     if opt_disc then
         _, disc_loss = optim.sgd(disc_feval, disc_params, optim_state)
         disc_loss = disc_loss[1]
@@ -289,42 +277,15 @@ for i = 1, iterations do
         print('saved checkpoint to ' .. savefile)
     end
 
-    if disc_loss < 0.85 * gen_loss then
+    if disc_loss < threshold_1 * gen_loss then
         opt_disc = false
         opt_gen = true
     end
 
-    if disc_loss > 0.95 * gen_loss then
+    if disc_loss > threshold_2 * gen_loss then
         opt_disc = true
         opt_gen = false
     end
-
-    -- if gen_loss < 0.7 * disc_loss then
-        -- opt_gen = false
-    -- else
-        -- opt_gen = true
-    -- end
---
-    -- if disc_loss < 0.7 * gen_loss then
-        -- opt_disc = false
-    -- else
-        -- opt_disc = true
-    -- end
-
-    -- thresh = 0.1
-    -- if gen_loss < thresh and disc_loss < thresh then
-        -- opt_gen = true
-        -- opt_disc = true
-    -- elseif opt_gen and gen_loss < thresh then
-        -- opt_gen = false
-    -- elseif not opt_gen and gen_loss >= thresh then
-        -- opt_gen = true
-    -- elseif opt_disc and disc_loss < thresh then
-        -- opt_disc = false
-    -- elseif not opt_disc and disc_loss >= thresh then
-        -- opt_disc = true
-    -- end
-
 
     -- handle early stopping if things are going really bad
     if gen_loss ~= gen_loss or disc_loss ~= disc_loss then

@@ -1,7 +1,10 @@
 *.pyc
 *.swp
 *.py~
-grid/
+*.mat
+*.h5
+grid/data
+grid/grid
 timit/
 tutorial/
 cv/
