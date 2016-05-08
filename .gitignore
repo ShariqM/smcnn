@@ -3,9 +3,7 @@
 *.py~
 *.mat
 *.h5
-grid/data
-grid/grid
-timit/
-tutorial/
+*.wav
+.DS_Store
+data/grid
 cv/
-net.bin
