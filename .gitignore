@@ -5,6 +5,11 @@
 *.h5
 *.wav
 *.align
+*.out
+*.aux
+*.bbl
+*.blg
+*.log
 .DS_Store
 data/grid
 cv/
