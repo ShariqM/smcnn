@@ -19,7 +19,7 @@ cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',200,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size',64,'number of sequences to train on in parallel')
+cmd:option('-batch_size',128,'number of sequences to train on in parallel')
 cmd:option('-dropout',0.1,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 cmd:option('-compile_test',false,'Dont load data, use small network, to make sure there are no symantic errors')
 cmd:option('-log',false,'Log the probabilities of correct answers')
@@ -28,7 +28,7 @@ cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-run_test',false,'Run test set')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
 cmd:option('-dont_save', false, 'Stop checkpointing')
-cmd:option('-learning_rate',1e-3,'learning rate')
+cmd:option('-learning_rate',1e-5,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -68,21 +68,20 @@ if string.len(opt.init_from) > 0 then
     local checkpoint = torch.load(opt.init_from)
     encoder = checkpoint.encoder
     decoder = checkpoint.decoder
+    -- encoder  = CNN2.encoder(cqt_features, timepoints, opt.dropout)
+    -- decoder  = CNN2.decoder(cqt_features, timepoints, opt.dropout)
     classify = checkpoint.classify
     init_params = false
 else
     if opt.compile_test then
-        print 'Starting Networks'
-        encoder  = CNN2.test_encoder(cqt_features, timepoints, opt.dropout)
-        decoder  = CNN2.test_decoder(cqt_features, timepoints, opt.dropout)
         classify = CNN2.test_adv_classifier(cqt_features, timepoints, opt.dropout)
         opt.dont_save = true
-        print 'Networks created'
     else
-        print ('hi')
+        print 'Loading network'
         encoder  = CNN2.encoder(cqt_features, timepoints, opt.dropout)
         decoder  = CNN2.decoder(cqt_features, timepoints, opt.dropout)
         classify = CNN2.adv_classifier(cqt_features, timepoints, opt.dropout)
+        print 'Networks created'
     end
 end
 
@@ -107,15 +106,11 @@ disc_params, disc_grad_params = model_utils.combine_all_parameters(classify)
 nparams = disc_params:nElement()
 print('number of parameters in the discriminative model: ' .. nparams)
 
+-- gen_params:uniform(-0.08, 0.08) -- small uniform numbers
 if init_params then
-    -- params:normal(-1/torch.sqrt(nparams), 1/torch.sqrt(nparams))
     gen_params:uniform(-0.08, 0.08) -- small uniform numbers
     disc_params:uniform(-0.08, 0.08) -- small uniform numbers
 end
-
--- first = true
--- last_grad_params = params:clone() -- Dummy
--- last_params = params:clone() -- Dummy
 
 function gen_feval(p)
     if p ~= gen_params then
@@ -149,15 +144,24 @@ function gen_feval(p)
     diff  = diffnet:forward({rsAwX, rsBwX})
     if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
-    sBwY_pred = decoder:forward({diff, rsAwY})
+    local sBwY_pred = decoder:forward({diff, rsAwY})
     -- print ('Decode out:', sBwY_pred:size())
+    -- debug.debug()
     if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
 
     spk_pred, word_pred = unpack(classify:forward(sBwY_pred))
+    if opt.log then
+        print "GEN - Generative Distribution"
+        for i=opt.batch_size-8,opt.batch_size do
+            sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
+            wprob = torch.exp(word_pred)[{i,word_labels[i]}]
+            print (string.format("\tP(S=%d)=%.2f || P(W)=%.2f", spk_labels[i], sprob, wprob))
+        end
+    end
+
     local loss = criterion:forward(spk_pred, spk_labels)
     loss = loss + criterion:forward(word_pred, word_labels)
     if perf then print (string.format("Time 4: %.3f", timer:time().real)) end
-
 
     if opt.save_pred then
         matio.save('reconstructions/train_actual.mat', {X1=sBwY:float()})
@@ -210,17 +214,17 @@ function disc_feval(p)
 
     spk_pred, word_pred = unpack(classify:forward(x))
     if opt.log then
-        print "True Distribution"
+        print "DISC - True Distribution"
         for i=1,4 do
             sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
             wprob = torch.exp(word_pred)[{i,word_labels[i]}]
-            print (string.format("P(S)=%.2f || P(W)=%.2f", sprob, wprob))
+            print (string.format("\tP(S=%d)=%.2f || P(W)=%.2f", spk_labels[i], sprob, wprob))
         end
-        print "Generative Distribution"
+        print "DISC - Generative Distribution"
         for i=opt.batch_size-4,opt.batch_size do
             sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
             wprob = torch.exp(word_pred)[{i,word_labels[i]}]
-            print (string.format("P(S)=%.2f || P(W)=%.2f", sprob, wprob))
+            print (string.format("\tP(S=%d)=%.2f || P(W)=%.2f", spk_labels[i], sprob, wprob))
         end
     end
 
@@ -242,6 +246,7 @@ end
 
 local iterations = opt.max_epochs * opt.iters
 local iterations_per_epoch = opt.iters
+-- local optim_state = {learningRate = opt.learning_rate, momentum=0.5}
 local optim_state = {learningRate = opt.learning_rate}
 
 opt_disc = true
@@ -253,12 +258,16 @@ for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    if i % 10 == 0 or opt_gen then
+    if opt_gen then
+    -- if true or i % 10 == 0 or opt_gen then
+    -- if true then
         _, gen_loss = optim.sgd(gen_feval, gen_params, optim_state)
         gen_loss = gen_loss[1]
     end
 
-    if true or opt_disc then
+    -- if i % 10 == 0 then
+    -- if true or opt_disc then
+    if opt_disc then
         _, disc_loss = optim.sgd(disc_feval, disc_params, optim_state)
         disc_loss = disc_loss[1]
     end
@@ -279,6 +288,28 @@ for i = 1, iterations do
         torch.save(savefile, checkpoint)
         print('saved checkpoint to ' .. savefile)
     end
+
+    if disc_loss < 0.85 * gen_loss then
+        opt_disc = false
+        opt_gen = true
+    end
+
+    if disc_loss > 0.95 * gen_loss then
+        opt_disc = true
+        opt_gen = false
+    end
+
+    -- if gen_loss < 0.7 * disc_loss then
+        -- opt_gen = false
+    -- else
+        -- opt_gen = true
+    -- end
+--
+    -- if disc_loss < 0.7 * gen_loss then
+        -- opt_disc = false
+    -- else
+        -- opt_disc = true
+    -- end
 
     -- thresh = 0.1
     -- if gen_loss < thresh and disc_loss < thresh then

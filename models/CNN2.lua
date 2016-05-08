@@ -20,6 +20,23 @@ usz = 3 -- Height Upsample Size
 -- usz = 2 -- Width Upsample Size
 --]]
 
+--[[
+-- 175x140
+hpsz = 2 -- Height Pool Size
+wpsz = 2 -- Width Pool Size
+csz = 4 -- Conv Size
+ssz = 1 -- Stride Size
+
+nchannels = {1,16,64,128}
+full_sizes = {-1, 2048, 2048}
+view_height = 19
+view_width  = 14
+-- view_width  = 7
+
+usz = 2 -- Height Upsample Size
+-- usz = 2 -- Width Upsample Size
+--]]
+
 -- 175x140
 hpsz = 3 -- Height Pool Size
 wpsz = 3 -- Width Pool Size
@@ -37,20 +54,20 @@ usz = 3 -- Height Upsample Size
 
 -- 175x140
 --[[
-hpsz = 3 -- Height Pool Size
-wpsz = 3 -- Width Pool Size
-csz = 5 -- Conv Size
-ssz = 1 -- Stride Size
+hpsz = 2 -- Height Pool Size
+wpsz = 2 -- Width Pool Size
+csz = 7 -- Conv Size
+ssz = 3 -- Stride Size
 
 nchannels = {1,8,64}
-full_sizes = {-1, 4096, 4096}
-view_height = 17
-view_width  = 13
+full_sizes = {-1, 1024, 1024}
+view_height = 4
+view_width  = 3
 -- view_width  = 7
 
-usz = 3 -- Height Upsample Size
+usz = 2 -- Height Upsample Size
 -- usz = 2 -- Width Upsample Size
-]]--
+--]]
 
 
 function CNN2.encoder(cqt_features, timepoints, dropout)
@@ -70,6 +87,7 @@ function CNN2.encoder(cqt_features, timepoints, dropout)
     full_sizes[1] = nchannels[#nchannels] * view_height * view_width
     print (full_sizes[1])
     curr = nn.View(full_sizes[1])(curr)
+    out = curr
 
     for i=1, #full_sizes - 2 do
         local full = nn.Linear(full_sizes[i], full_sizes[i+1])(curr)
@@ -117,8 +135,9 @@ function CNN2.decoder(cqt_features, timepoints, dropout)
 
     i = #nchannels-1
     curr = nn.SpatialUpSamplingNearest(usz)(curr)
-    curr = nn.SpatialReplicationPadding(2, 0, 2, 0)(curr)
-    -- curr = nn.SpatialReplicationPadding(1, 0, 2, 0)(curr)
+    -- curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr) -- cs7=7
+    -- curr = nn.SpatialReplicationPadding(1, 0, 1, 0)(curr)
+    curr = nn.SpatialReplicationPadding(2, 0, 2, 0)(curr) -- cs=6
     curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
     curr = nn.Sigmoid()(curr)
 
@@ -128,10 +147,17 @@ function CNN2.decoder(cqt_features, timepoints, dropout)
 
     i = i - 1
     curr = nn.SpatialUpSamplingNearest(usz)(curr)
-    curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr)
-    -- curr = nn.SpatialReplicationPadding(1, 0, 1, 0)(curr)
+    curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr) -- cs=5
     curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
+    -- curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr) -- csz=7
     out = curr
+
+    -- i = i - 1
+    -- curr = nn.SpatialUpSamplingNearest(usz)(curr)
+    -- curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr) -- cs=5
+    -- curr = nn.SpatialFullConvolution(nchannels[i+1],nchannels[i],csz,csz,ssz,ssz)(curr)
+    -- curr = nn.SpatialReplicationPadding(1, 0, 0, 0)(curr) -- csz=7
+    -- out = curr
 
     return nn.gModule({A, B}, {out})
 end
@@ -151,55 +177,25 @@ function CNN2.adv_classifier(cqt_features, timepoints, dropout)
     print (full_sizes[1])
     view = nn.View(full_sizes[1])(curr)
 
+    sz_1 = 512
+    sz_2 = 128
     -- Speaker
-    curr = nn.Linear(full_sizes[1], 2048)(view)
+    curr = nn.Linear(full_sizes[1], sz_1)(view)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(2048, 256)(curr)
+    curr = nn.Linear(sz_1, sz_2)(curr)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(256, 33)(curr)
+    curr = nn.Linear(sz_2, 33)(curr)
     spk_out = nn.LogSoftMax()(curr)
 
     -- Word
-    curr = nn.Linear(full_sizes[1], 2048)(view)
+    curr = nn.Linear(full_sizes[1], sz_1)(view)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(2048, 256)(curr)
+    curr = nn.Linear(sz_1, sz_2)(curr)
     curr = nn.ReLU()(curr)
-    curr = nn.Linear(256, 31)(curr)
+    curr = nn.Linear(sz_2, 31)(curr)
     word_out = nn.LogSoftMax()(curr)
 
     return nn.gModule({x}, {spk_out, word_out})
 end
 
-function CNN2.test_encoder(cqt_features, timepoints, dropout)
-    local x = nn.Identity()()
-    local view = nn.View(cqt_features * timepoints)(x)
-    local out  = nn.Linear(cqt_features * timepoints, 10)(view)
-    return nn.gModule({x}, {out})
-end
-
-function CNN2.test_decoder(cqt_features, timepoints, dropout)
-    local A = nn.Identity()()
-    local B = nn.Identity()()
-
-    local Aout = nn.Linear(10, cqt_features * timepoints)(A)
-    local Bout = nn.Linear(10, cqt_features * timepoints)(B)
-
-    local out = nn.CAddTable()({Aout, Bout})
-    out = nn.View(1, cqt_features, timepoints)(out)
-
-    return nn.gModule({A,B}, {out})
-end
-
-function CNN2.test_adv_classifier(cqt_features, timepoints, dropout)
-    local x = nn.Identity()()
-    local view = nn.View(cqt_features * timepoints)(x)
-
-    spk = nn.Linear(cqt_features * timepoints, 33)(view)
-    spk_out = nn.LogSoftMax()(spk)
-
-    word = nn.Linear(cqt_features * timepoints, 31)(view)
-    word_out = nn.LogSoftMax()(word)
-
-    return nn.gModule({x}, {spk_out, word_out})
-end
 return CNN2

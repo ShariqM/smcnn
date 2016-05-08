@@ -19,14 +19,11 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size, comp
     self.gen_speaker = self.nclass_speakers
     self.nclass_words = 31
     self.gen_word = self.nclass_words
-    -- self.trainset = matio.load('grid/words/data2.mat')['X']
+
+    local timer = torch.Timer()
 
     self.trainset = {}
     for spk=1, self.nspeakers do
-        -- self.trainset[spk] = hdf5.open(string.format('grid/stft_data/S%d.h5', spk), 'r')
-        -- self.trainset[spk] = matio.load(string.format('grid/stft_data/S%d.mat', spk))['X']
-        -- print (self.trainset[spk]['lay'])
-        -- debug.debug()
         if not compile_test then
             self.trainset[spk] = matio.load(string.format('grid/cqt_shariq/data/s%d.mat', spk))['X']
         else
@@ -38,24 +35,25 @@ function GridSpeechBatchLoader.create(cqt_features, timepoints, batch_size, comp
 
 
     -- self.words = {'four', 'white', 'nine', 'zero', 'with', 'seven', 'at', 'set', 'soon'}
-    self.words = {'bin', 'lay', 'place', 'set',
-                  'blue', 'green', 'red', 'white',
-                  'one', 'two', 'three', 'four', 'five',
-                  'six', 'seven', 'eight', 'nine', 'zero',
-                  'again', 'now', 'please'}
+    -- self.words = {'bin', 'lay', 'place', 'set',
+                  -- 'blue', 'green', 'red', 'white',
+                  -- 'one', 'two', 'three', 'four', 'five',
+                  -- 'six', 'seven', 'eight', 'nine', 'zero',
+                  -- 'again', 'now', 'please'}
 
-    self.words = {'four', 'white', 'zero', 'seven', 'soon',}
-    self.words = {
-                  'blue', 'green', 'red', 'white',
-                  'one', 'two', 'three', 'four', 'five',
-                  'six', 'seven', 'zero',
-                  'now', 'please'}
-
-    self.words = {'four', 'white'}
+    -- self.words = {'four', 'white', 'zero', 'seven', 'soon',}
+    -- self.words = {
+                  -- 'blue', 'green', 'red', 'white',
+                  -- 'one', 'two', 'three', 'four', 'five',
+                  -- 'six', 'seven', 'zero',
+                  -- 'now', 'please'}
+    -- self.words = {'again', 'now', 'please', 'soon'}
+    self.words = {'blue', 'green', 'red', 'white'}
+    -- self.words = {'four', 'white'}
     self.test_words = {'place', 'nine', 'again'} -- s8 eight is bad
     -- self.words = {'four', 'white'}
 
-    print('data load done.')
+    print(string.format('data load done. %.3f', timer:time().real))
     collectgarbage()
     return self
 end
@@ -71,12 +69,7 @@ function GridSpeechBatchLoader:next_batch_help(test)
 
     for i=1, self.batch_size do
         sA = 1
-        if test then
-            sB = self.nspeakers - 1
-        else
-            sB = torch.random(2, self.nspeakers - 1)
-            -- sB = torch.random(2, self.nspeakers)
-        end
+        sB = torch.random(2, self.nspeakers)
 
         if test then
             words = self.test_words
@@ -86,7 +79,7 @@ function GridSpeechBatchLoader:next_batch_help(test)
             wsz = #self.words
         end
 
-        word = 'four'
+        word = 'blue'
         -- word = words[torch.random(1, wsz)]
         oword = word
         while word == oword do
@@ -145,13 +138,15 @@ function GridSpeechBatchLoader:next_class_batch()
     word_labels = torch.zeros(self.batch_size)
 
     for i=1, self.batch_size do
-        spk = torch.random(1, self.nspeakers - 1)
+        -- spk = torch.random(1, self.nspeakers)
+        spk = 2 -- XXX FIXME
         word_idx = torch.random(1, #self.words)
         word = self.words[word_idx]
 
         -- local timer = torch.Timer() FIXME too slow
         word_examples = self.trainset[spk][word]
 
+        -- print (spk, word)
         x[{i,1,{},{}}] = word_examples[torch.random(1, word_examples:size()[1])]
         spk_labels[i] = spk
         word_labels[i] = word_idx
@@ -194,6 +189,7 @@ function GridSpeechBatchLoader:next_adv_class_batch(cuda)
     end
 
     -- Combine
+    -- print (gen_x:size())
     x[{{1, self.batch_size},{},{},{}}]             = true_x
     x[{{self.batch_size+1, abatch_size},{},{},{}}] = gen_x
 

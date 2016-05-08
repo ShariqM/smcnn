@@ -22,12 +22,13 @@ cmd:option('-type', 'double', 'type: double | float | cuda')
 cmd:option('-iters',200,'iterations per epoch')
 
 cmd:option('-max_epochs',200,'number of full passes through the training data')
-cmd:option('-batch_size',8,'number of sequences to train on in parallel')
+cmd:option('-batch_size',128,'number of sequences to train on in parallel')
 cmd:option('-dropout',0,'dropout for regularization, used after each CNN hidden layer. 0 = no dropout')
 
+cmd:option('-log',false,'Log probabilites')
 cmd:option('-save_pred',false,'Save prediction')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-learning_rate',1e-3,'learning rate')
+cmd:option('-learning_rate',1e-2,'learning rate')
 cmd:option('-learning_rate_decay',0.98,'learning rate decay')
 cmd:option('-learning_rate_decay_after',20,'in number of epochs, when to start decaying the learning rate')
 
@@ -57,7 +58,7 @@ end
 -- timepoints = 83
 cqt_features = 175
 timepoints = 140
-local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size)
+local loader = GridSpeechBatchLoader.create(cqt_features, timepoints, opt.batch_size, false)
 
 init_params = true
 if string.len(opt.init_from) > 0 then
@@ -89,6 +90,10 @@ if init_params then
     params:uniform(-0.08, 0.08) -- small uniform numbers
 end
 
+first = true
+last_grad_params = params:clone() -- Dummy
+last_params = params:clone() -- Dummy
+
 function feval(p)
     if p ~= params then
         params:copy(p)
@@ -110,12 +115,15 @@ function feval(p)
     if perf then print (string.format("Time 2: %.3f", timer:time().real)) end
 
     spk_pred, word_pred = unpack(cnn:forward(x))
-    for i=1,opt.batch_size do
-        sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
-        wprob = torch.exp(word_pred)[{i,word_labels[i]}]
-        print (sprob, wprob)
+    if opt.log then
+        for k=1, 8 do
+            i = torch.random(1, opt.batch_size)
+            sprob = torch.exp(spk_pred)[{i,spk_labels[i]}]
+            wprob = torch.exp(word_pred)[{i,word_labels[i]}]
+            print (string.format("\tP(S=%d)=%.2f || P(W)=%.2f", spk_labels[i], sprob, wprob))
+        end
     end
-    debug.debug()
+    -- debug.debug()
     if perf then print (string.format("Time 3: %.3f", timer:time().real)) end
     local loss = criterion:forward(spk_pred, spk_labels)
     loss = loss + criterion:forward(word_pred, word_labels)
@@ -128,6 +136,18 @@ function feval(p)
 
     cnn:backward(x, {doutput_spk, doutput_word})
 
+    if not first then
+        grad_diff = grad_params - last_grad_params
+        param_diff = params - last_params
+        L = torch.norm(grad_diff) / torch.norm(param_diff)
+        m = grad_diff:dot(param_diff) / torch.norm(param_diff) ^ 2
+        print (string.format("1/L:%.5f || 2/(L+m):%.5f || m:%.3f", 1/L, 2/(L+m), m))
+    end
+    first = false
+    last_params:copy(params)
+    last_grad_params:copy(grad_params)
+    -- print ("Params", torch.norm(params))
+
     return loss, grad_params
 end
 
@@ -135,24 +155,23 @@ local iterations = opt.max_epochs * opt.iters
 local iterations_per_epoch = opt.iters
 local loss0 = nil
 local optim_state = {learningRate = opt.learning_rate}
+T = 100
+decay_time = T
 
 for i = 1, iterations do
     local epoch = i / iterations_per_epoch
 
     local timer = torch.Timer()
-    -- print (i)
     local _, loss = optim.sgd(feval, params, optim_state)
     local time = timer:time().real
 
     loss = loss[1]
 
-    -- exponential learning rate decay
-    if i % iterations_per_epoch == 0 and opt.learning_rate_decay < 1 then
-        if epoch >= opt.learning_rate_decay_after then
-            local decay_factor = opt.learning_rate_decay
-            optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
-            print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
-        end
+    if i >= decay_time then
+        optim_state.learningRate = optim_state.learningRate * 1./2
+        print(string.format("Decayed learning rate to %.5f", optim_state.learningRate))
+        T = 2*T
+        decay_time = i + T
     end
 
     if i == 1 or i % opt.print_every == 0 then
@@ -160,7 +179,7 @@ for i = 1, iterations do
     end
 
     if (i % opt.save_every == 0 or i == iterations) then
-        local savefile = string.format('%s/net_analogy_%.2f.t7', opt.checkpoint_dir, epoch)
+        local savefile = string.format('%s/net_classify_%.2f.t7', opt.checkpoint_dir, epoch)
         print('saving checkpoint to ' .. savefile)
         checkpoint = {}
         checkpoint.cnn = cnn
