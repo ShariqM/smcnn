@@ -1,13 +1,11 @@
 ''' This code splits up CQT sentences in words and saves them as a dictionary in a .mat file'''
 import glob
-import librosa
 import pdb
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import wavfile
 import scipy.io as sio
 import scipy
-import h5py
 import math
 from scipy.interpolate import interp1d
 
@@ -43,7 +41,7 @@ Fs = 25000.
 lengths = []
 scale = 1000. # Easier to learn in the scaled space.
 
-for spk in range(13,nspks+1):
+for spk in range(1,nspks+1):
     skey = 'S%d' % spk
     print skey
     data = {}

@@ -13,13 +13,13 @@ filts = create_scattfilters( scparam );
 
 fs = 16000
 for j=1:32
-    files = dir(sprintf('../data/s%d/*.wav', j));
+    files = dir(sprintf('../wavs/s%d/*.wav', j));
     nfiles = length(files);
     j
     for i=1:nfiles
         i
         fname = files(i,1).name;
-        [x1,Fs] = audioread(sprintf('../data/s%d/%s', j, fname));
+        [x1,Fs] = audioread(sprintf('../wavs/s%d/%s', j, fname));
         x1 = resample(x1,fs,Fs);
         x1 = x1(:)'; L1 = length(x1);
 

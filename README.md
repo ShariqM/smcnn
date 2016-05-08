@@ -15,12 +15,9 @@ Shariq Mobin & Joan Bruna
        - https://github.com/joanbruna/scattnmf
 
 # Getting the data ready
-    1) Download the GRID wav files
-        - cd data/wavs/
-        - ./download
-    2) Download the GRID align files
-        - cd data/aligns/
-        - ./download
+    1) Download Grid Wav and align files
+        - cd data
+        - ./setup_data
     2) Compute the CQT representation using Matlab
         - Start matlab
         - from smcnn, cd grid/wav_to_cqt
