@@ -55,7 +55,7 @@ for spk in range(13,nspks+1):
             print '\t%d' % i
         i = i + 1
         aname = fname.split('/')[-1][:-4]
-        words = process_align('grid/data/all_align/s%d_align/%s.align' % (spk, aname))
+        words = process_align('data/aligns/s%d/%s.align' % (spk, aname))
         y = sio.loadmat(fname)['X']
 
         for (word, start, stop) in words:

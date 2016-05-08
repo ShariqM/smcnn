@@ -4,6 +4,7 @@
 *.mat
 *.h5
 *.wav
+*.align
 .DS_Store
 data/grid
 cv/

@@ -1,0 +1,8 @@
+#! /bin/bash
+
+for i in {1..34}; do
+    wget http://spandh.dcs.shef.ac.uk/gridcorpus/s$i/audio/s$i.tar;
+    tar -xf s$i.tar
+    rm s$i.tar
+done
+
