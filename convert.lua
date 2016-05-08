@@ -6,7 +6,7 @@ require 'optim'
 matio = require 'matio'
 matio.use_lua_strings = true
 local model_utils=require 'model_utils'
-local CNN = require 'models.CNN'
+local CNN = require 'models.cnn'
 local Difference = require 'models.difference'
 local GridSpeechBatchLoader = require 'GridSpeechBatchLoader'
 
